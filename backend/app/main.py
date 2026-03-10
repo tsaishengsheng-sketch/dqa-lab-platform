@@ -2,18 +2,73 @@ import asyncio
 import datetime
 import json
 import random
-from fastapi import FastAPI, HTTPException, Query
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from .sop import router as sop_router, execution_router, DEVICE_IDS
 from .reports import router as reports_router
 from .errors import router as errors_router
 from .models import SessionLocal, DeviceData, ErrorLog, DeviceState
 from .standards import get_ramp_rate, get_standard
-from sqlalchemy import func
 
-app = FastAPI(title="KSON AICM Digital Twin Server")
-app.state.AICM_CACHE = {}
 background_tasks = set()
+
+
+# ============================================================
+# Lifespan（取代已棄用的 @app.on_event）
+# ============================================================
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from .models import init_db
+
+    init_db()
+
+    with SessionLocal() as db:
+        saved_states = {s.device_id: s for s in db.query(DeviceState).all()}
+
+    cache = {}
+    for device_id in DEVICE_IDS:
+        s = saved_states.get(device_id)
+        if s:
+            cache[device_id] = {
+                "temperature": s.temperature,
+                "humidity": s.humidity,
+                "status": s.status,
+                "running_sop_name": s.running_sop_name or "STANDBY",
+                "running_sop_id": s.running_sop_id,
+                "standard_id": s.standard_id,
+                "active_sop_json": s.active_sop_json,
+                "completed_steps": s.completed_steps or 0,
+                "started_at": s.started_at,
+            }
+            print(f"🔄 [{device_id}] 恢復狀態：{s.status}，溫度：{s.temperature}°C")
+        else:
+            cache[device_id] = {
+                "temperature": round(25.0 + random.uniform(-1.0, 1.0), 2),
+                "humidity": round(55.0 + random.uniform(-2.0, 2.0), 1),
+                "status": "IDLE",
+                "running_sop_name": "STANDBY",
+                "running_sop_id": None,
+                "standard_id": None,
+                "active_sop_json": None,
+                "completed_steps": 0,
+                "started_at": None,
+            }
+
+    app.state.AICM_CACHE = cache
+
+    sim_task = asyncio.create_task(data_simulator())
+    background_tasks.add(sim_task)
+    sim_task.add_done_callback(background_tasks.discard)
+    print(f"✅ System initialized with {len(DEVICE_IDS)} devices: {DEVICE_IDS}")
+
+    yield  # 應用程式運行期間
+
+
+app = FastAPI(title="KSON AICM Digital Twin Server", lifespan=lifespan)
 
 app.include_router(sop_router, prefix="/api/sop", tags=["sop"])
 app.include_router(execution_router)
@@ -27,9 +82,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # ============================================================
 # 工具函式
 # ============================================================
+
+
+def _now_utc() -> datetime.datetime:
+    """統一使用 UTC aware datetime"""
+    return datetime.datetime.now(datetime.timezone.utc)
 
 
 def _save_device_state(device_id: str, item: dict):
@@ -48,7 +109,7 @@ def _save_device_state(device_id: str, item: dict):
         state.active_sop_json = item.get("active_sop_json")
         state.completed_steps = item.get("completed_steps", 0)
         state.started_at = item.get("started_at")
-        state.updated_at = datetime.datetime.now(datetime.timezone.utc)
+        state.updated_at = _now_utc()
         db.commit()
 
 
@@ -91,6 +152,10 @@ async def get_all_devices():
             "timestamp": now,
             "active_sop_json": item.get("active_sop_json"),
             "completed_steps": item.get("completed_steps", 0),
+            # 從 active_sop_json 解析 total_steps 供前端進度條使用
+            "total_steps": len(json.loads(item["active_sop_json"]).get("steps", []))
+            if item.get("active_sop_json")
+            else 0,
             "started_at": item.get("started_at").isoformat()
             if item.get("started_at")
             else None,
@@ -105,19 +170,16 @@ async def get_device_history(device_id: str):
     取得設備當前測試的完整溫濕度歷史，每分鐘聚合一個平均點。
     - 若設備正在執行測試（有 started_at），從 started_at 開始撈
     - 若已停止或 IDLE，回傳空陣列
-    - DB 原始資料（每 10 秒一筆）不受影響，只是查詢時做分鐘聚合
     """
     device = app.state.AICM_CACHE.get(device_id)
     if not device:
         raise HTTPException(status_code=404, detail=f"設備 {device_id} 不存在")
 
     started_at = device.get("started_at")
-
-    # 沒有 started_at 表示沒有進行中的測試，回傳空陣列
     if not started_at:
         return []
 
-    # 統一轉成 naive datetime（去掉時區），避免 SQLite 比對格式不符
+    # 統一轉成 naive datetime，避免 SQLite 比對格式不符
     if isinstance(started_at, str):
         started_at_dt = datetime.datetime.fromisoformat(
             started_at.replace("Z", "")
@@ -141,10 +203,9 @@ async def get_device_history(device_id: str):
     if not rows:
         return []
 
-    # 每分鐘聚合：把同一分鐘內的資料取平均
+    # 每分鐘聚合：同一分鐘內的資料取平均
     buckets: dict = {}
     for row in rows:
-        # 取到分鐘精度的 key，例如 "2026-03-10 10:32"
         minute_key = row.timestamp.strftime("%Y-%m-%d %H:%M")
         if minute_key not in buckets:
             buckets[minute_key] = {"temps": [], "humis": []}
@@ -161,12 +222,10 @@ async def get_device_history(device_id: str):
         avg_humi = (
             round(sum(data["humis"]) / len(data["humis"]), 2) if data["humis"] else None
         )
-        # 前端顯示只需要 HH:mm 格式
-        display_time = minute_key[11:]  # 取 "HH:MM" 部分
         result.append(
             {
-                "time": display_time,
-                "full_time": minute_key,  # 供前端縮放用
+                "time": minute_key[11:],  # HH:MM，供圖表顯示
+                "full_time": minute_key,  # 完整時間，供前端縮放
                 "temperature": avg_temp,
                 "humidity": avg_humi,
             }
@@ -219,7 +278,7 @@ async def emergency_stop(device_id: str):
                 temperature=device.get("temperature"),
                 humidity=device.get("humidity"),
                 note="操作人員觸發緊急停止",
-                created_at=datetime.datetime.now(),
+                created_at=_now_utc(),
             )
         )
         db.commit()
@@ -239,14 +298,17 @@ async def emergency_stop(device_id: str):
     return {"status": "success", "message": f"{device_id} 緊急停止已觸發"}
 
 
+class ProgressPayload(BaseModel):
+    completed: int = 0
+
+
 @app.post("/api/devices/{device_id}/progress")
-async def update_progress(device_id: str, payload: dict):
+async def update_progress(device_id: str, payload: ProgressPayload):
     """更新設備目前完成的步驟數"""
     device = _get_device(device_id)
-    completed = payload.get("completed", 0)
-    device["completed_steps"] = completed
+    device["completed_steps"] = payload.completed
     _save_device_state(device_id, device)
-    return {"status": "success", "completed_steps": completed}
+    return {"status": "success", "completed_steps": payload.completed}
 
 
 @app.post("/api/stop/{device_id}/pause")
@@ -285,65 +347,71 @@ async def normal_stop(device_id: str):
 
 async def data_simulator():
     """物理模擬器 — 5 台各自獨立運作，每 10 秒寫一次資料庫"""
-    write_counters: dict = {}  # 每台設備獨立計數器
+    write_counters: dict = {}
 
     while True:
         cache = app.state.AICM_CACHE
-        with SessionLocal() as db:
-            try:
-                needs_commit = False
-                for device_id, item in cache.items():
-                    status = item.get("status", "OFFLINE")
-                    current_temp = item.get("temperature", 25.0)
+        now = _now_utc()
 
-                    if device_id not in write_counters:
-                        write_counters[device_id] = 0
+        for device_id, item in cache.items():
+            status = item.get("status", "OFFLINE")
+            current_temp = item.get("temperature", 25.0)
 
-                    if status == "RUNNING":
-                        standard_id = item.get("standard_id", "IEC60068_CYCLE")
-                        max_ramp_rate = get_ramp_rate(standard_id)
-                        standard = get_standard(standard_id)
-                        target_temp = 25.0
-                        if standard:
-                            target_temp = standard.get(
-                                "high_temperature"
-                            ) or standard.get("target_temperature", 25.0)
+            if device_id not in write_counters:
+                write_counters[device_id] = 0
 
-                        temp_diff = target_temp - current_temp
-                        if abs(temp_diff) > 0.1:
-                            max_change = max_ramp_rate / 60.0
-                            actual_change = min(abs(temp_diff), max_change)
-                            new_temp = current_temp + (
-                                actual_change if temp_diff > 0 else -actual_change
-                            )
-                        else:
-                            new_temp = current_temp
-                        item["temperature"] = round(
-                            new_temp + random.uniform(-0.1, 0.1), 2
-                        )
+            # 溫度物理模擬
+            if status == "RUNNING":
+                standard_id = item.get("standard_id", "IEC60068_CYCLE")
+                max_ramp_rate = get_ramp_rate(standard_id)
+                standard = get_standard(standard_id)
+                target_temp = 25.0
+                if standard:
+                    target_temp = standard.get("high_temperature") or standard.get(
+                        "target_temperature", 25.0
+                    )
 
-                    elif status == "FINISHING":
-                        diff = 25.0 - current_temp
-                        if abs(diff) > 0.5:
-                            item["temperature"] = round(
-                                current_temp + (0.4 if diff > 0 else -0.4), 2
-                            )
-                        else:
-                            item["temperature"] = 25.0
-                            item["status"] = "IDLE"
-                            item["running_sop_name"] = "STANDBY"
-                            _save_device_state(device_id, item)
-                            print(f"✅ [{device_id}] 降溫完成，回待機。")
+                temp_diff = target_temp - current_temp
+                if abs(temp_diff) > 0.1:
+                    max_change = max_ramp_rate / 60.0
+                    actual_change = min(abs(temp_diff), max_change)
+                    new_temp = current_temp + (
+                        actual_change if temp_diff > 0 else -actual_change
+                    )
+                else:
+                    new_temp = current_temp
+                item["temperature"] = round(new_temp + random.uniform(-0.1, 0.1), 2)
 
-                    elif status == "EMERGENCY":
-                        item["temperature"] = round(
-                            current_temp + random.uniform(-0.05, 0.05), 2
-                        )
+            elif status == "FINISHING":
+                diff = 25.0 - current_temp
+                if abs(diff) > 0.5:
+                    item["temperature"] = round(
+                        current_temp + (0.4 if diff > 0 else -0.4), 2
+                    )
+                else:
+                    item["temperature"] = 25.0
+                    item.update(
+                        {
+                            "status": "IDLE",
+                            "running_sop_name": "STANDBY",
+                            "running_sop_id": None,
+                            "standard_id": None,
+                        }
+                    )
+                    _save_device_state(device_id, item)
+                    print(f"✅ [{device_id}] 降溫完成，回待機。")
 
-                    # 每台設備獨立計數，滿 10 秒才寫入
-                    if status in ["RUNNING", "FINISHING", "PAUSED", "EMERGENCY"]:
-                        write_counters[device_id] += 1
-                        if write_counters[device_id] >= 10:
+            elif status == "EMERGENCY":
+                item["temperature"] = round(
+                    current_temp + random.uniform(-0.05, 0.05), 2
+                )
+
+            # 每台設備獨立計數，滿 10 秒才寫入 DB
+            if status in ["RUNNING", "FINISHING", "PAUSED", "EMERGENCY"]:
+                write_counters[device_id] += 1
+                if write_counters[device_id] >= 10:
+                    try:
+                        with SessionLocal() as db:
                             db.add(
                                 DeviceData(
                                     device_id=device_id,
@@ -362,71 +430,12 @@ async def data_simulator():
                             state.running_sop_id = item.get("running_sop_id")
                             state.running_sop_name = item.get("running_sop_name")
                             state.standard_id = item.get("standard_id")
-                            state.updated_at = datetime.datetime.now(
-                                datetime.timezone.utc
-                            )
-                            write_counters[device_id] = 0
-                            needs_commit = True
-                    else:
-                        write_counters[device_id] = 0
-
-                if needs_commit:
-                    db.commit()
-
-            except Exception as e:
-                print(f"Simulator Error: {e}")
-                db.rollback()
+                            state.updated_at = now
+                            db.commit()
+                    except Exception as e:
+                        print(f"[{device_id}] DB write error: {e}")
+                    write_counters[device_id] = 0
+            else:
+                write_counters[device_id] = 0
 
         await asyncio.sleep(1)
-
-
-# ============================================================
-# 啟動事件
-# ============================================================
-
-
-@app.on_event("startup")
-async def startup_event():
-    from .models import init_db
-
-    init_db()
-
-    # 從 DB 讀回上次狀態，若無紀錄則初始化為 IDLE
-    with SessionLocal() as db:
-        saved_states = {s.device_id: s for s in db.query(DeviceState).all()}
-
-    cache = {}
-    for device_id in DEVICE_IDS:
-        s = saved_states.get(device_id)
-        if s:
-            # 恢復上次狀態（RUNNING 恢復為 PAUSED，避免無人監控下自動繼續）
-            restored_status = s.status
-            cache[device_id] = {
-                "temperature": s.temperature,
-                "humidity": s.humidity,
-                "status": restored_status,
-                "running_sop_name": s.running_sop_name or "STANDBY",
-                "running_sop_id": s.running_sop_id,
-                "standard_id": s.standard_id,
-                "active_sop_json": s.active_sop_json,
-                "completed_steps": s.completed_steps or 0,
-                "started_at": s.started_at,
-            }
-            print(
-                f"🔄 [{device_id}] 恢復狀態：{restored_status}，溫度：{s.temperature}°C"
-            )
-        else:
-            cache[device_id] = {
-                "temperature": round(25.0 + random.uniform(-1.0, 1.0), 2),
-                "humidity": round(55.0 + random.uniform(-2.0, 2.0), 1),
-                "status": "IDLE",
-                "running_sop_name": "STANDBY",
-                "running_sop_id": None,
-                "standard_id": None,
-            }
-
-    app.state.AICM_CACHE = cache
-
-    sim_task = asyncio.create_task(data_simulator())
-    background_tasks.add(sim_task)
-    print(f"✅ System initialized with {len(DEVICE_IDS)} devices: {DEVICE_IDS}")
