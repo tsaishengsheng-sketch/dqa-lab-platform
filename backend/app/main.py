@@ -2,13 +2,14 @@ import asyncio
 import datetime
 import json
 import random
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from .sop import router as sop_router, execution_router, DEVICE_IDS
 from .reports import router as reports_router
 from .errors import router as errors_router
 from .models import SessionLocal, DeviceData, ErrorLog, DeviceState
 from .standards import get_ramp_rate, get_standard
+from sqlalchemy import func
 
 app = FastAPI(title="KSON AICM Digital Twin Server")
 app.state.AICM_CACHE = {}
@@ -96,6 +97,72 @@ async def get_all_devices():
         }
         for device_id, item in app.state.AICM_CACHE.items()
     ]
+
+
+@app.get("/api/devices/{device_id}/history")
+async def get_device_history(device_id: str):
+    """
+    取得設備當前測試的完整溫濕度歷史，每分鐘聚合一個平均點。
+    - 若設備正在執行測試（有 started_at），從 started_at 開始撈
+    - 若已停止或 IDLE，回傳空陣列
+    - DB 原始資料（每 10 秒一筆）不受影響，只是查詢時做分鐘聚合
+    """
+    device = app.state.AICM_CACHE.get(device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail=f"設備 {device_id} 不存在")
+
+    started_at = device.get("started_at")
+
+    # 沒有 started_at 表示沒有進行中的測試，回傳空陣列
+    if not started_at:
+        return []
+
+    with SessionLocal() as db:
+        rows = (
+            db.query(DeviceData)
+            .filter(
+                DeviceData.device_id == device_id,
+                DeviceData.timestamp >= started_at,
+            )
+            .order_by(DeviceData.timestamp.asc())
+            .all()
+        )
+
+    if not rows:
+        return []
+
+    # 每分鐘聚合：把同一分鐘內的資料取平均
+    buckets: dict = {}
+    for row in rows:
+        # 取到分鐘精度的 key，例如 "2026-03-10 10:32"
+        minute_key = row.timestamp.strftime("%Y-%m-%d %H:%M")
+        if minute_key not in buckets:
+            buckets[minute_key] = {"temps": [], "humis": []}
+        if row.temperature is not None:
+            buckets[minute_key]["temps"].append(row.temperature)
+        if row.humidity is not None:
+            buckets[minute_key]["humis"].append(row.humidity)
+
+    result = []
+    for minute_key, data in sorted(buckets.items()):
+        avg_temp = (
+            round(sum(data["temps"]) / len(data["temps"]), 2) if data["temps"] else None
+        )
+        avg_humi = (
+            round(sum(data["humis"]) / len(data["humis"]), 2) if data["humis"] else None
+        )
+        # 前端顯示只需要 HH:mm 格式
+        display_time = minute_key[11:]  # 取 "HH:MM" 部分
+        result.append(
+            {
+                "time": display_time,
+                "full_time": minute_key,  # 供前端縮放用
+                "temperature": avg_temp,
+                "humidity": avg_humi,
+            }
+        )
+
+    return result
 
 
 @app.get("/api/latest")

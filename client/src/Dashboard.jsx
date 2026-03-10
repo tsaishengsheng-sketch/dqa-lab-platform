@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import {
   LineChart,
@@ -8,6 +8,8 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   Tooltip,
+  Brush,
+  Legend,
 } from "recharts";
 
 const API = "http://localhost:8000";
@@ -29,7 +31,7 @@ const card = {
 };
 
 // ── 單台設備卡片 ──────────────────────────────────────────
-const DeviceCard = ({ device }) => {
+const DeviceCard = ({ device, isSelected, onClick }) => {
   const sc = STATUS_CONFIG[device.status] || STATUS_CONFIG.OFFLINE;
   const isActive = ["RUNNING", "PAUSED", "FINISHING", "EMERGENCY"].includes(
     device.status,
@@ -37,15 +39,19 @@ const DeviceCard = ({ device }) => {
 
   return (
     <div
+      onClick={onClick}
       style={{
         ...card,
         borderLeft: `3px solid ${sc.color}`,
         display: "flex",
         flexDirection: "column",
         gap: 12,
+        cursor: "pointer",
+        outline: isSelected ? `2px solid ${sc.color}` : "none",
+        outlineOffset: 2,
+        transition: "outline 0.15s",
       }}
     >
-      {/* 標題列 */}
       <div
         style={{
           display: "flex",
@@ -78,7 +84,6 @@ const DeviceCard = ({ device }) => {
         </span>
       </div>
 
-      {/* 溫濕度 */}
       <div
         style={{
           display: "flex",
@@ -138,7 +143,6 @@ const DeviceCard = ({ device }) => {
         </div>
       </div>
 
-      {/* 執行中任務 + 步驟進度 */}
       <div
         style={{
           padding: "8px 12px",
@@ -150,56 +154,33 @@ const DeviceCard = ({ device }) => {
         }}
       >
         {isActive ? device.running_sop_name : "STANDBY (IDLE)"}
-        {isActive &&
-          (() => {
-            const totalSteps = (() => {
-              try {
-                const sop = JSON.parse(device.active_sop_json || "{}");
-                return sop.steps?.length || 0;
-              } catch {
-                return 0;
-              }
-            })();
-            const completed = device.completed_steps || 0;
-            if (totalSteps === 0) return null;
-            return (
-              <div style={{ marginTop: 6 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: 4,
-                    fontSize: 11,
-                    color: "#8b949e",
-                  }}
-                >
-                  <span>步驟進度</span>
-                  <span
-                    style={{
-                      color: completed === totalSteps ? "#57ab5a" : "#cdd9e5",
-                    }}
-                  >
-                    {completed} / {totalSteps}
-                  </span>
-                </div>
-                <div
-                  style={{ height: 3, background: "#21262d", borderRadius: 2 }}
-                >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: `${(completed / totalSteps) * 100}%`,
-                      background:
-                        completed === totalSteps ? "#57ab5a" : sc.color,
-                      borderRadius: 2,
-                      transition: "width .3s",
-                    }}
-                  />
-                </div>
-              </div>
-            );
-          })()}
       </div>
+
+      {isActive && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: 11,
+            color: "#484f58",
+          }}
+        >
+          <span>步驟進度</span>
+          <span style={{ color: sc.color, fontWeight: 600 }}>
+            {device.completed_steps || 0} /{" "}
+            {(() => {
+              try {
+                const sop = device.active_sop_json
+                  ? JSON.parse(device.active_sop_json)
+                  : null;
+                return sop?.steps?.length || "?";
+              } catch {
+                return "?";
+              }
+            })()}
+          </span>
+        </div>
+      )}
     </div>
   );
 };
@@ -207,50 +188,87 @@ const DeviceCard = ({ device }) => {
 // ── 主元件 ────────────────────────────────────────────────
 const Dashboard = () => {
   const [devices, setDevices] = useState([]);
-  const [trendDevice, setTrendDevice] = useState("KSON_CH01");
-  const [historyMap, setHistoryMap] = useState({});
   const [executions, setExecutions] = useState([]);
+  const [selectedDevice, setSelectedDevice] = useState("KSON_CH01");
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
+  const prevStartedAt = useRef(null);
+  const lastAppendedMinute = useRef(null);
+  const appendTimer = useRef(null);
+
+  // 撈完整歷史
+  const fetchFullHistory = useCallback(async (deviceId) => {
+    setLoadingHistory(true);
+    try {
+      const res = await axios.get(`${API}/api/devices/${deviceId}/history`);
+      setHistory(res.data);
+      if (res.data.length > 0) {
+        lastAppendedMinute.current = res.data[res.data.length - 1].full_time;
+      } else {
+        lastAppendedMinute.current = null;
+      }
+    } catch {
+      setHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
+  // 每分鐘 append 最新一筆
+  const appendLatestPoint = useCallback(async (deviceId) => {
+    try {
+      const res = await axios.get(`${API}/api/devices/${deviceId}/history`);
+      const data = res.data;
+      if (!data || data.length === 0) return;
+      const latest = data[data.length - 1];
+      if (latest.full_time !== lastAppendedMinute.current) {
+        setHistory((prev) => [...prev, latest]);
+        lastAppendedMinute.current = latest.full_time;
+      }
+    } catch {}
+  }, []);
+
+  // 切換設備時重撈歷史
   useEffect(() => {
-    // Timer 1：每秒更新溫濕度數字與設備狀態
+    fetchFullHistory(selectedDevice);
+    prevStartedAt.current = null;
+    lastAppendedMinute.current = null;
+  }, [selectedDevice, fetchFullHistory]);
+
+  // 每分鐘 append
+  useEffect(() => {
+    if (appendTimer.current) clearInterval(appendTimer.current);
+    appendTimer.current = setInterval(() => {
+      appendLatestPoint(selectedDevice);
+    }, 60_000);
+    return () => clearInterval(appendTimer.current);
+  }, [selectedDevice, appendLatestPoint]);
+
+  // 每秒 polling 即時狀態 + 偵測測試重啟
+  useEffect(() => {
     const fetchDevices = async () => {
       try {
         const res = await axios.get(`${API}/api/devices`);
         setDevices(res.data);
-      } catch (err) {}
+        const current = res.data.find((d) => d.device_id === selectedDevice);
+        if (current) {
+          const newStartedAt = current.started_at;
+          if (newStartedAt && newStartedAt !== prevStartedAt.current) {
+            prevStartedAt.current = newStartedAt;
+            fetchFullHistory(selectedDevice);
+          } else if (!newStartedAt && prevStartedAt.current) {
+            prevStartedAt.current = null;
+            setHistory([]);
+            lastAppendedMinute.current = null;
+          }
+        }
+      } catch {}
     };
-    const tickInterval = setInterval(fetchDevices, 1000);
+    const interval = setInterval(fetchDevices, 1000);
     fetchDevices();
-
-    // Timer 2：每 60 秒存一個點進趨勢圖
-    const appendHistory = async () => {
-      try {
-        const res = await axios.get(`${API}/api/devices`);
-        setHistoryMap((prev) => {
-          const next = { ...prev };
-          res.data.forEach((d) => {
-            const prevList = next[d.device_id] || [];
-            next[d.device_id] = [
-              ...prevList.slice(-59),
-              {
-                time: d.timestamp,
-                temperature: d.temperature,
-                humidity: d.humidity,
-              },
-            ];
-          });
-          return next;
-        });
-      } catch (err) {}
-    };
-    const historyInterval = setInterval(appendHistory, 60000);
-    appendHistory();
-
-    return () => {
-      clearInterval(tickInterval);
-      clearInterval(historyInterval);
-    };
-  }, []);
+    return () => clearInterval(interval);
+  }, [selectedDevice, fetchFullHistory]);
 
   useEffect(() => {
     axios
@@ -264,6 +282,14 @@ const Dashboard = () => {
   const idleCount = devices.filter((d) =>
     ["IDLE", "OFFLINE"].includes(d.status),
   ).length;
+  const selectedDeviceData = devices.find(
+    (d) => d.device_id === selectedDevice,
+  );
+  const sc = STATUS_CONFIG[selectedDeviceData?.status] || STATUS_CONFIG.OFFLINE;
+
+  // Brush 預設最近 60 筆
+  const brushEnd = Math.max(history.length - 1, 0);
+  const brushStart = Math.max(brushEnd - 59, 0);
 
   return (
     <div
@@ -310,13 +336,17 @@ const Dashboard = () => {
         }}
       >
         {devices.map((device) => (
-          <DeviceCard key={device.device_id} device={device} />
+          <DeviceCard
+            key={device.device_id}
+            device={device}
+            isSelected={device.device_id === selectedDevice}
+            onClick={() => setSelectedDevice(device.device_id)}
+          />
         ))}
       </div>
 
-      {/* 趨勢圖 — 可切換設備 */}
+      {/* 趨勢圖 */}
       <div style={{ ...card, marginBottom: 24 }}>
-        {/* 標題列 + 設備切換按鈕 */}
         <div
           style={{
             display: "flex",
@@ -325,109 +355,121 @@ const Dashboard = () => {
             marginBottom: 16,
           }}
         >
-          <div
-            style={{
-              color: "#8b949e",
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: 1,
-            }}
-          >
-            {trendDevice} — TEMP / HUMI TREND（最近 60 秒）
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span
+              style={{
+                color: "#8b949e",
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: 1,
+              }}
+            >
+              {selectedDevice} — TEMP / HUMI TREND
+            </span>
+            <span
+              style={{
+                padding: "1px 6px",
+                borderRadius: 3,
+                fontSize: 10,
+                fontWeight: 700,
+                color: sc.color,
+                background: sc.bg,
+                border: `1px solid ${sc.color}44`,
+              }}
+            >
+              {selectedDeviceData?.status || "—"}
+            </span>
+            {loadingHistory && (
+              <span style={{ color: "#484f58", fontSize: 10 }}>載入中...</span>
+            )}
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            {devices.map((d) => {
-              const sc = STATUS_CONFIG[d.status] || STATUS_CONFIG.OFFLINE;
-              const isSelected = d.device_id === trendDevice;
-              return (
-                <button
-                  key={d.device_id}
-                  onClick={() => setTrendDevice(d.device_id)}
-                  style={{
-                    padding: "3px 10px",
-                    borderRadius: 6,
-                    fontSize: 11,
-                    cursor: "pointer",
-                    fontFamily: "monospace",
-                    border: `1px solid ${isSelected ? sc.color : sc.color + "66"}`,
-                    background: isSelected ? sc.bg : "#0d1117",
-                    color: isSelected ? sc.color : sc.color + "99",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 5,
-                    transition: "all .15s",
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      background: sc.color,
-                      flexShrink: 0,
-                      boxShadow:
-                        d.status === "RUNNING" ? `0 0 6px ${sc.color}` : "none",
-                    }}
-                  />
-                  {d.device_id.replace("KSON_", "")}
-                </button>
-              );
-            })}
+          <div style={{ fontSize: 10, color: "#484f58" }}>
+            {history.length > 0
+              ? `共 ${history.length} 筆（每分鐘一點）｜拖拉下方 Brush 縮放`
+              : "無測試資料"}
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart
-            data={historyMap[trendDevice] || []}
-            margin={{ top: 5, right: 16, left: -10, bottom: 5 }}
+
+        {history.length === 0 ? (
+          <div
+            style={{
+              height: 200,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#484f58",
+              fontSize: 13,
+            }}
           >
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="#21262d"
-              vertical={false}
-            />
-            <XAxis
-              dataKey="time"
-              stroke="#30363d"
-              tick={{ fontSize: 10, fill: "#484f58" }}
-              hide={(historyMap[trendDevice] || []).length < 2}
-              tickFormatter={(t) => {
-                const d = new Date(t);
-                return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-              }}
-            />
-            <YAxis
-              stroke="#30363d"
-              domain={["auto", "auto"]}
-              tick={{ fontSize: 10, fill: "#484f58" }}
-            />
-            <Tooltip
-              contentStyle={{
-                background: "#161b22",
-                border: "1px solid #30363d",
-                fontSize: 11,
-              }}
-              itemStyle={{ color: "#cdd9e5" }}
-            />
-            <Line
-              type="monotone"
-              dataKey="temperature"
-              name="溫度 (°C)"
-              stroke="#ff7b72"
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="humidity"
-              name="濕度 (%RH)"
-              stroke="#a5d6ff"
-              strokeWidth={1.5}
-              dot={false}
-              isAnimationActive={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+            {["IDLE", "OFFLINE"].includes(selectedDeviceData?.status)
+              ? "設備待機中，尚無測試資料"
+              : "等待資料累積（每 10 秒存一筆，每分鐘顯示一點）"}
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart
+              data={history}
+              margin={{ top: 5, right: 16, left: -10, bottom: 30 }}
+            >
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="#21262d"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="time"
+                stroke="#30363d"
+                tick={{ fontSize: 10, fill: "#484f58" }}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                stroke="#30363d"
+                domain={["auto", "auto"]}
+                tick={{ fontSize: 10, fill: "#484f58" }}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "#161b22",
+                  border: "1px solid #30363d",
+                  fontSize: 11,
+                }}
+                itemStyle={{ color: "#cdd9e5" }}
+                labelStyle={{ color: "#8b949e", marginBottom: 4 }}
+              />
+              <Legend
+                wrapperStyle={{ fontSize: 11, color: "#8b949e", paddingTop: 4 }}
+              />
+              <Brush
+                dataKey="time"
+                startIndex={brushStart}
+                endIndex={brushEnd}
+                height={20}
+                stroke="#30363d"
+                fill="#0d1117"
+                travellerWidth={6}
+                style={{ fontSize: 9, fill: "#484f58" }}
+              />
+              <Line
+                type="monotone"
+                dataKey="temperature"
+                name="溫度 (°C)"
+                stroke="#ff7b72"
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="humidity"
+                name="濕度 (%RH)"
+                stroke="#a5d6ff"
+                strokeWidth={1.5}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* 執行紀錄 */}
