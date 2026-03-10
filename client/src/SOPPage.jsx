@@ -809,63 +809,92 @@ const SOPPage = () => {
               <p style={{ color: "#8b949e", fontSize: 12, marginBottom: 14 }}>
                 請依序確認每個步驟已完成：
               </p>
-              {(ds.activeSop.steps || []).map((step) => (
-                <label
-                  key={step.step_id}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 10,
-                    marginBottom: 12,
-                    cursor: "pointer",
-                    color: ds.completedSteps[step.step_id]
-                      ? "#57ab5a"
-                      : "#cdd9e5",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!ds.completedSteps[step.step_id]}
-                    onChange={() =>
-                      updateDS(selectedDevice, {
-                        completedSteps: {
-                          ...ds.completedSteps,
-                          [step.step_id]: !ds.completedSteps[step.step_id],
-                        },
-                      })
+              {(ds.activeSop.steps || []).map((step, idx) => {
+                const steps = ds.activeSop.steps;
+                // 判斷此步驟是否可勾：第一步永遠可勾，其餘需前一步完成
+                // Optional 步驟：往前找第一個非 optional 步驟確認是否完成
+                const isLocked = (() => {
+                  if (idx === 0) return false;
+                  // 找前一個非 optional 步驟
+                  for (let i = idx - 1; i >= 0; i--) {
+                    if (!steps[i].optional) {
+                      return !ds.completedSteps[steps[i].step_id];
                     }
+                  }
+                  return false;
+                })();
+
+                const isChecked = !!ds.completedSteps[step.step_id];
+
+                const handleToggle = () => {
+                  if (isLocked) return;
+                  const newCompleted = { ...ds.completedSteps };
+                  if (isChecked) {
+                    // 取消時連鎖清除此步驟之後所有步驟
+                    steps.forEach((s) => {
+                      if (s.step_id >= step.step_id) {
+                        delete newCompleted[s.step_id];
+                      }
+                    });
+                  } else {
+                    newCompleted[step.step_id] = true;
+                  }
+                  updateDS(selectedDevice, { completedSteps: newCompleted });
+                };
+
+                return (
+                  <label
+                    key={step.step_id}
+                    onClick={handleToggle}
                     style={{
-                      marginTop: 3,
-                      accentColor: "#57ab5a",
-                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      marginBottom: 12,
+                      cursor: isLocked ? "not-allowed" : "pointer",
+                      opacity: isLocked ? 0.4 : 1,
+                      color: isChecked ? "#57ab5a" : "#cdd9e5",
                     }}
-                  />
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 12 }}>
-                      Step {step.step_id}. {step.name}
-                      {step.optional && (
-                        <span
-                          style={{
-                            marginLeft: 6,
-                            fontSize: 10,
-                            padding: "1px 6px",
-                            background: "#21262d",
-                            color: "#8b949e",
-                            borderRadius: 4,
-                          }}
-                        >
-                          Optional
-                        </span>
-                      )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {}}
+                      disabled={isLocked}
+                      style={{
+                        marginTop: 3,
+                        accentColor: "#57ab5a",
+                        flexShrink: 0,
+                        cursor: isLocked ? "not-allowed" : "pointer",
+                      }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 12 }}>
+                        Step {step.step_id}. {step.name}
+                        {step.optional && (
+                          <span
+                            style={{
+                              marginLeft: 6,
+                              fontSize: 10,
+                              padding: "1px 6px",
+                              background: "#21262d",
+                              color: "#8b949e",
+                              borderRadius: 4,
+                            }}
+                          >
+                            Optional
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        style={{ fontSize: 11, color: "#8b949e", marginTop: 2 }}
+                      >
+                        {step.description}
+                      </div>
                     </div>
-                    <div
-                      style={{ fontSize: 11, color: "#8b949e", marginTop: 2 }}
-                    >
-                      {step.description}
-                    </div>
-                  </div>
-                </label>
-              ))}
+                  </label>
+                );
+              })}
               <div style={{ marginTop: 8, marginBottom: 4 }}>
                 <div
                   style={{
