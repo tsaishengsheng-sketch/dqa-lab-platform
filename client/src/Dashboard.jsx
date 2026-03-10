@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import {
-  LineChart,
+  ComposedChart,
   Line,
   XAxis,
   YAxis,
@@ -10,6 +10,7 @@ import {
   Tooltip,
   Brush,
   Legend,
+  ReferenceLine,
 } from "recharts";
 
 const API = "http://localhost:8000";
@@ -28,6 +29,45 @@ const card = {
   border: "1px solid #30363d",
   borderRadius: 12,
   padding: "20px 24px",
+};
+
+// 把 started_at 和 timestamp 都轉成「經過分鐘數」字串
+function toElapsed(startedAt, fullTime) {
+  if (!startedAt || !fullTime) return fullTime || "";
+  try {
+    const start = new Date(startedAt);
+    const point = new Date(fullTime);
+    const diffMin = Math.round((point - start) / 60000);
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    return h > 0 ? `${h}h${String(m).padStart(2, "0")}m` : `${m}m`;
+  } catch {
+    return fullTime;
+  }
+}
+
+// 自訂 Tooltip
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload || payload.length === 0) return null;
+  return (
+    <div
+      style={{
+        background: "#1c2128",
+        border: "1px solid #30363d",
+        borderRadius: 6,
+        padding: "8px 12px",
+        fontSize: 11,
+      }}
+    >
+      <div style={{ color: "#8b949e", marginBottom: 4 }}>⏱ {label}</div>
+      {payload.map((p) => (
+        <div key={p.dataKey} style={{ color: p.color, lineHeight: 1.8 }}>
+          {p.name}：{p.value?.toFixed(2)}
+          {p.dataKey === "temperature" ? " °C" : " %RH"}
+        </div>
+      ))}
+    </div>
+  );
 };
 
 // ── 單台設備卡片 ──────────────────────────────────────────
@@ -192,18 +232,24 @@ const Dashboard = () => {
   const [selectedDevice, setSelectedDevice] = useState("KSON_CH01");
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [startedAt, setStartedAt] = useState(null);
 
   const prevStartedAt = useRef(null);
   const lastAppendedMinute = useRef(null);
   const appendTimer = useRef(null);
 
-  // 撈完整歷史
-  const fetchFullHistory = useCallback(async (deviceId) => {
+  // 撈完整歷史，同時計算 elapsed time
+  const fetchFullHistory = useCallback(async (deviceId, newStartedAt) => {
     setLoadingHistory(true);
     try {
       const res = await axios.get(`${API}/api/devices/${deviceId}/history`);
-      setHistory(res.data);
-      if (res.data.length > 0) {
+      const data = res.data.map((d) => ({
+        ...d,
+        elapsed: toElapsed(newStartedAt, d.full_time),
+      }));
+      setHistory(data);
+      setStartedAt(newStartedAt);
+      if (data.length > 0) {
         lastAppendedMinute.current = res.data[res.data.length - 1].full_time;
       } else {
         lastAppendedMinute.current = null;
@@ -215,37 +261,41 @@ const Dashboard = () => {
     }
   }, []);
 
-  // 每分鐘 append 最新一筆
-  const appendLatestPoint = useCallback(async (deviceId) => {
+  const appendLatestPoint = useCallback(async (deviceId, currentStartedAt) => {
     try {
       const res = await axios.get(`${API}/api/devices/${deviceId}/history`);
       const data = res.data;
       if (!data || data.length === 0) return;
       const latest = data[data.length - 1];
       if (latest.full_time !== lastAppendedMinute.current) {
-        setHistory((prev) => [...prev, latest]);
+        setHistory((prev) => [
+          ...prev,
+          {
+            ...latest,
+            elapsed: toElapsed(currentStartedAt, latest.full_time),
+          },
+        ]);
         lastAppendedMinute.current = latest.full_time;
       }
     } catch {}
   }, []);
 
-  // 切換設備時重撈歷史
   useEffect(() => {
-    fetchFullHistory(selectedDevice);
-    prevStartedAt.current = null;
+    const current = devices.find((d) => d.device_id === selectedDevice);
+    const sa = current?.started_at || null;
+    fetchFullHistory(selectedDevice, sa);
+    prevStartedAt.current = sa;
     lastAppendedMinute.current = null;
-  }, [selectedDevice, fetchFullHistory]);
+  }, [selectedDevice]);
 
-  // 每分鐘 append
   useEffect(() => {
     if (appendTimer.current) clearInterval(appendTimer.current);
     appendTimer.current = setInterval(() => {
-      appendLatestPoint(selectedDevice);
+      appendLatestPoint(selectedDevice, startedAt);
     }, 60_000);
     return () => clearInterval(appendTimer.current);
-  }, [selectedDevice, appendLatestPoint]);
+  }, [selectedDevice, startedAt, appendLatestPoint]);
 
-  // 每秒 polling 即時狀態 + 偵測測試重啟
   useEffect(() => {
     const fetchDevices = async () => {
       try {
@@ -256,10 +306,11 @@ const Dashboard = () => {
           const newStartedAt = current.started_at;
           if (newStartedAt && newStartedAt !== prevStartedAt.current) {
             prevStartedAt.current = newStartedAt;
-            fetchFullHistory(selectedDevice);
+            fetchFullHistory(selectedDevice, newStartedAt);
           } else if (!newStartedAt && prevStartedAt.current) {
             prevStartedAt.current = null;
             setHistory([]);
+            setStartedAt(null);
             lastAppendedMinute.current = null;
           }
         }
@@ -287,7 +338,6 @@ const Dashboard = () => {
   );
   const sc = STATUS_CONFIG[selectedDeviceData?.status] || STATUS_CONFIG.OFFLINE;
 
-  // Brush 預設最近 60 筆
   const brushEnd = Math.max(history.length - 1, 0);
   const brushStart = Math.max(brushEnd - 59, 0);
 
@@ -406,10 +456,10 @@ const Dashboard = () => {
               : "等待資料累積（每 10 秒存一筆，每分鐘顯示一點）"}
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart
+          <ResponsiveContainer width="100%" height={280}>
+            <ComposedChart
               data={history}
-              margin={{ top: 5, right: 16, left: -10, bottom: 30 }}
+              margin={{ top: 8, right: 50, left: 0, bottom: 30 }}
             >
               <CartesianGrid
                 strokeDasharray="3 3"
@@ -417,39 +467,66 @@ const Dashboard = () => {
                 vertical={false}
               />
               <XAxis
-                dataKey="time"
+                dataKey="elapsed"
                 stroke="#30363d"
                 tick={{ fontSize: 10, fill: "#484f58" }}
                 interval="preserveStartEnd"
-              />
-              <YAxis
-                stroke="#30363d"
-                domain={["auto", "auto"]}
-                tick={{ fontSize: 10, fill: "#484f58" }}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: "#161b22",
-                  border: "1px solid #30363d",
-                  fontSize: 11,
+                label={{
+                  value: "Time (hr:min)",
+                  position: "insideBottom",
+                  offset: -18,
+                  fontSize: 10,
+                  fill: "#484f58",
                 }}
-                itemStyle={{ color: "#cdd9e5" }}
-                labelStyle={{ color: "#8b949e", marginBottom: 4 }}
               />
+              {/* 左 Y 軸：溫度 */}
+              <YAxis
+                yAxisId="temp"
+                orientation="left"
+                stroke="#ff7b72"
+                tick={{ fontSize: 10, fill: "#ff7b72" }}
+                label={{
+                  value: "°C",
+                  angle: -90,
+                  position: "insideLeft",
+                  offset: 10,
+                  fontSize: 10,
+                  fill: "#ff7b72",
+                }}
+                domain={["auto", "auto"]}
+              />
+              {/* 右 Y 軸：濕度 */}
+              <YAxis
+                yAxisId="humi"
+                orientation="right"
+                stroke="#a5d6ff"
+                tick={{ fontSize: 10, fill: "#a5d6ff" }}
+                label={{
+                  value: "%RH",
+                  angle: 90,
+                  position: "insideRight",
+                  offset: 10,
+                  fontSize: 10,
+                  fill: "#a5d6ff",
+                }}
+                domain={[0, 100]}
+              />
+              <Tooltip content={<CustomTooltip />} />
               <Legend
                 wrapperStyle={{ fontSize: 11, color: "#8b949e", paddingTop: 4 }}
               />
               <Brush
-                dataKey="time"
+                dataKey="elapsed"
                 startIndex={brushStart}
                 endIndex={brushEnd}
                 height={20}
                 stroke="#30363d"
                 fill="#0d1117"
                 travellerWidth={6}
-                style={{ fontSize: 9, fill: "#484f58" }}
+                style={{ fontSize: 9 }}
               />
               <Line
+                yAxisId="temp"
                 type="monotone"
                 dataKey="temperature"
                 name="溫度 (°C)"
@@ -459,6 +536,7 @@ const Dashboard = () => {
                 isAnimationActive={false}
               />
               <Line
+                yAxisId="humi"
                 type="monotone"
                 dataKey="humidity"
                 name="濕度 (%RH)"
@@ -467,7 +545,7 @@ const Dashboard = () => {
                 dot={false}
                 isAnimationActive={false}
               />
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         )}
       </div>
