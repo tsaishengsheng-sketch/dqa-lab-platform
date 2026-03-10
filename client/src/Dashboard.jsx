@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   Tooltip,
+  Brush,
 } from "recharts";
 
 const API = "http://localhost:8000";
@@ -259,7 +260,7 @@ const Dashboard = () => {
                 temperature: d.temperature,
                 humidity: d.humidity,
               });
-              if (buf.length > 60) buf.shift();
+              if (buf.length > 5760) buf.shift();
             }
           });
           setHistoryTick((t) => t + 1);
@@ -366,7 +367,7 @@ const Dashboard = () => {
               letterSpacing: 1,
             }}
           >
-            {selectedDevice} — TEMP / HUMI TREND（最近 60 分鐘）
+            {selectedDevice} — TEMP / HUMI TREND（完整測試時長）
           </div>
           {/* CH01~CH05 切換按鈕 */}
           <div style={{ display: "flex", gap: 6 }}>
@@ -416,7 +417,7 @@ const Dashboard = () => {
             等待資料累積中（每分鐘記錄一點）...
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={220}>
+          <ResponsiveContainer width="100%" height={280}>
             <LineChart
               data={history}
               margin={{ top: 5, right: 44, left: -10, bottom: 5 }}
@@ -432,14 +433,24 @@ const Dashboard = () => {
                 tick={{ fontSize: 10, fill: "#484f58" }}
               />
               {/* 溫度 Y 軸（左） */}
+              // 改成
               <YAxis
                 yAxisId="temp"
                 orientation="left"
-                domain={["auto", "auto"]}
+                domain={([dataMin, dataMax]) => {
+                  const padding = Math.max(
+                    10,
+                    Math.abs(dataMax - dataMin) * 0.1,
+                  );
+                  return [
+                    Math.floor((dataMin - padding) / 10) * 10,
+                    Math.ceil((dataMax + padding) / 10) * 10,
+                  ];
+                }}
                 stroke="#30363d"
                 tick={{ fontSize: 10, fill: "#ff7b72" }}
                 tickFormatter={(v) => `${v}°`}
-                width={36}
+                width={42}
               />
               {/* 濕度 Y 軸（右），避免與溫度共用同一刻度 */}
               <YAxis
@@ -482,6 +493,14 @@ const Dashboard = () => {
                 strokeWidth={1.5}
                 dot={false}
                 isAnimationActive={false}
+              />
+              <Brush
+                dataKey="time"
+                height={24}
+                stroke="#30363d"
+                fill="#161b22"
+                travellerWidth={6}
+                startIndex={Math.max(0, history.length - 60)}
               />
             </LineChart>
           </ResponsiveContainer>
