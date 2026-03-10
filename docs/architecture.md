@@ -9,7 +9,7 @@
 * **✅ 全域路由控制 (App Router)**: 由 `App.jsx` 統一管理頂部導航列，active 頁面高亮顯示。
 * **✅ 儀表板 (Dashboard)**:
     * 即時溫濕度大字顯示（每秒更新），TEMP/HUMI 各自 accent 色邊框。
-    * 趨勢折線圖（溫度 + 濕度**雙 Y 軸**，溫度左軸/濕度右軸獨立刻度），每 60 秒存一個資料點，顯示最近 60 分鐘；切換設備時從 history API 補撈歷史。
+    * 趨勢折線圖（溫度 + 濕度**雙 Y 軸**，溫度左軸/濕度右軸獨立刻度），每 60 秒存一個資料點，顯示完整測試時長（從 started_at 至今）；Brush 縮放條可拖拉查看任意時段；切換設備時從 history API 補撈歷史；in-memory buffer 上限 5760 點（覆蓋 96h 測試）。
     * DeviceCard 顯示步驟進度條（completed_steps / total_steps），`total_steps` 由後端從 `active_sop_json` 解析回傳。
     * 六種狀態 badge 顏色區分（RUNNING / PAUSED / FINISHING / EMERGENCY / IDLE / OFFLINE）。
     * 歷史執行紀錄列表（每 30 秒自動刷新），每筆可直接下載 CSV 報告。
@@ -124,7 +124,7 @@
 | 模組 | 狀態 | 說明 |
 |------|------|------|
 | 前端路由 | ✅ | App.jsx 統一管理 |
-| 儀表板 | ✅ | 即時監控、趨勢圖雙 Y 軸（每分鐘一點）、六種狀態、執行紀錄列表（30s 刷新）|
+| 儀表板 | ✅ | 即時監控、趨勢圖雙 Y 軸（完整測試時長 + Brush 縮放，buffer 5760 點）、六種狀態、執行紀錄列表（30s 刷新）|
 | DeviceCard 步驟進度 | ✅ | completed_steps / total_steps 進度條，total_steps 由後端解析回傳 |
 | SOP 三步驟法規選擇 | ✅ | 法規→版本→測試條件，動態載入，per-device 獨立 state |
 | SELECT DEVICE 即時狀態 | ✅ | 每顆按鈕反映各設備即時狀態顏色 |
