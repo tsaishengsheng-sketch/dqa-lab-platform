@@ -14,6 +14,9 @@ body {
 
 #root {
   width: 100%;
+  height: 100vh;        /* 新增 */
+  display: flex;        /* 新增 */
+  flex-direction: column; /* 新增 */
 }
 
 /* 讓圖片和圖表容器不會撐破螢幕 */

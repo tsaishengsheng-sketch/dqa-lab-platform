@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import {
-  LineChart,
+  ComposedChart,
   Line,
   ReferenceLine,
+  CartesianGrid,
   XAxis,
   YAxis,
   Tooltip,
+  Brush,
   ResponsiveContainer,
 } from "recharts";
 import "./SOPPage.css";
@@ -30,14 +32,93 @@ const SAFETY_CHECKS = [
 const ACTIVE_STATUSES = ["RUNNING", "PAUSED"];
 const MAX_CHART_POINTS = 60;
 
-// 與 Dashboard.jsx 保持一致的 STATUS_CONFIG，統一加上 label
+// 把 full_time 轉成測試開始後的「經過分鐘數」（整數）
+function toElapsedMin(startedAt, fullTime) {
+  if (!startedAt || !fullTime) return null;
+  try {
+    const start = new Date(startedAt);
+    const point = new Date(fullTime);
+    return Math.round((point - start) / 60000);
+  } catch {
+    return null;
+  }
+}
+
+// 格式化分鐘數為 "0h00m" 字串（X 軸顯示用）
+function fmtMin(min) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h > 0 ? `${h}h${String(m).padStart(2, "0")}m` : `${m}m`;
+}
+
+// 從 SOP 參數生成完整 SP（目標設定值）曲線，每分鐘一點
+// 回傳 Array<{ min, sp_temp, sp_humi }>
+function generateSP(sop) {
+  if (!sop) return [];
+  const ramp = sop.ramp_rate || 1; // °C/min
+  const high = sop.high_temperature ?? sop.target_temperature ?? 25;
+  const low = sop.low_temperature ?? 25;
+  const dwell = (sop.dwell_time_hours || 1) * 60; // 分鐘
+  const cycles = sop.cycles || 1;
+  const ambientTemp = 25;
+  const humiVal = sop.humidity_rh_percent ?? null;
+
+  const pts = [];
+  let t = 0;
+
+  const pushRamp = (from, to) => {
+    const steps = Math.max(1, Math.round(Math.abs(to - from) / ramp));
+    for (let i = 1; i <= steps; i++) {
+      pts.push({ min: t, sp_temp: from + (to - from) * (i / steps) });
+      t++;
+    }
+  };
+
+  const pushDwell = (temp, duration) => {
+    for (let i = 0; i < duration; i++) {
+      pts.push({ min: t, sp_temp: temp });
+      t++;
+    }
+  };
+
+  const isCycle = cycles > 1 && sop.low_temperature != null;
+
+  if (isCycle) {
+    // 循環測試：升溫 → 高溫停留 → 降溫 → 低溫停留，重複 N 次
+    pushRamp(ambientTemp, high);
+    for (let c = 0; c < cycles; c++) {
+      pushDwell(high, dwell);
+      pushRamp(high, low);
+      pushDwell(low, dwell);
+      if (c < cycles - 1) pushRamp(low, high);
+    }
+    // 最後降回室溫
+    pushRamp(low, ambientTemp);
+  } else {
+    // 單次測試：升溫 → 停留 → 降回室溫
+    const startTemp = low < ambientTemp ? ambientTemp : ambientTemp;
+    const targetTemp = high !== ambientTemp ? high : low;
+    pushRamp(startTemp, targetTemp);
+    pushDwell(targetTemp, dwell);
+    pushRamp(targetTemp, ambientTemp);
+  }
+
+  // 加上濕度欄位，並格式化 min 為顯示字串
+  return pts.map((p) => ({
+    ...p,
+    sp_temp: Math.round(p.sp_temp * 10) / 10,
+    sp_humi: humiVal,
+    label: fmtMin(p.min),
+  }));
+}
+
 const STATUS_CONFIG = {
-  OFFLINE: { color: "#484f58", bg: "#21262d", label: "OFFLINE" },
-  IDLE: { color: "#8b949e", bg: "#21262d", label: "IDLE" },
-  RUNNING: { color: "#3fb950", bg: "#0f2318", label: "RUNNING" },
-  PAUSED: { color: "#f0a500", bg: "#2d1f00", label: "PAUSED" },
-  FINISHING: { color: "#58a6ff", bg: "#0d1f33", label: "FINISHING" },
-  EMERGENCY: { color: "#f85149", bg: "#2d0f0f", label: "EMERGENCY" },
+  OFFLINE: { color: "#484f58", bg: "#21262d" },
+  IDLE: { color: "#8b949e", bg: "#21262d" },
+  RUNNING: { color: "#3fb950", bg: "#0f2318" },
+  PAUSED: { color: "#f0a500", bg: "#2d1f00" },
+  FINISHING: { color: "#58a6ff", bg: "#0d1f33" },
+  EMERGENCY: { color: "#f85149", bg: "#2d0f0f" },
 };
 
 // ── 各設備獨立 state 初始值 ──────────────────────────────
@@ -48,6 +129,8 @@ const initDeviceState = () => ({
   safetyChecked: [false, false, false, false],
   tempHistory: [],
   tick: 0,
+  chartHistory: [], // 從 history API 撈取的 PV 資料（每分鐘一筆）
+  chartStartedAt: null,
 });
 
 const ConditionCard = ({ test }) => {
@@ -208,8 +291,41 @@ const SelectGroup = ({ step, title, items, selected, onSelect, accent }) => {
   );
 };
 
-const TempChart = ({ data, targetTemp }) => {
-  if (!data || data.length < 2)
+// 合併 SP 曲線與 PV 實際資料，以 min 為 key
+function mergeSpPv(spData, pvData) {
+  const map = {};
+  spData.forEach((p) => {
+    map[p.min] = { ...p };
+  });
+  pvData.forEach((p) => {
+    if (p.min != null && map[p.min]) {
+      map[p.min].pv_temp = p.temperature;
+      map[p.min].pv_humi = p.humidity;
+    }
+  });
+  return Object.values(map).sort((a, b) => a.min - b.min);
+}
+
+const TempChart = ({ sop, pvData, startedAt }) => {
+  const spData = React.useMemo(() => generateSP(sop), [sop]);
+
+  // 把 pvData 的 full_time 轉成 min
+  const pvWithMin = React.useMemo(() => {
+    if (!pvData || !startedAt) return [];
+    return pvData
+      .map((p) => ({
+        ...p,
+        min: toElapsedMin(startedAt, p.full_time),
+      }))
+      .filter((p) => p.min != null);
+  }, [pvData, startedAt]);
+
+  const merged = React.useMemo(
+    () => mergeSpPv(spData, pvWithMin),
+    [spData, pvWithMin],
+  );
+
+  if (spData.length === 0)
     return (
       <div
         style={{
@@ -221,77 +337,141 @@ const TempChart = ({ data, targetTemp }) => {
           fontSize: 11,
         }}
       >
-        等待數據...
+        等待測試啟動...
       </div>
     );
+
+  // Brush 預設顯示最近 120 分鐘
+  const brushEnd = merged.length - 1;
+  const brushStart = Math.max(0, brushEnd - 119);
+
+  // 溫度 Y 軸 domain：涵蓋 SP 最高/最低 ± 10
+  const spTemps = spData.map((p) => p.sp_temp);
+  const tempMin = Math.min(...spTemps) - 10;
+  const tempMax = Math.max(...spTemps) + 10;
+
   return (
-    <ResponsiveContainer width="100%" height={120}>
-      <LineChart
-        data={data}
-        margin={{ top: 4, right: 4, bottom: 0, left: -30 }}
+    <ResponsiveContainer width="100%" height={220}>
+      <ComposedChart
+        data={merged}
+        margin={{ top: 8, right: 44, bottom: 28, left: 4 }}
       >
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke="#1c2128"
+          vertical={false}
+        />
         <XAxis
-          dataKey="t"
+          dataKey="label"
           tick={{ fontSize: 9, fill: "#484f58" }}
           tickLine={false}
           axisLine={{ stroke: "#30363d" }}
-          interval="preserveStartEnd"
-          tickFormatter={(v) => `${v}s`}
+          interval={Math.max(1, Math.floor(merged.length / 8))}
+          label={{
+            value: "Time (hr:min)",
+            position: "insideBottom",
+            offset: -16,
+            fontSize: 9,
+            fill: "#484f58",
+          }}
         />
+        {/* 左 Y 軸：溫度 */}
         <YAxis
           yAxisId="temp"
-          domain={["auto", "auto"]}
+          orientation="left"
+          domain={[tempMin, tempMax]}
           tick={{ fontSize: 9, fill: "#ff7b72" }}
-          width={28}
+          width={32}
+          tickFormatter={(v) => `${v}°`}
         />
+        {/* 右 Y 軸：濕度 */}
         <YAxis
           yAxisId="humi"
           orientation="right"
-          domain={["auto", "auto"]}
+          domain={[0, 100]}
           tick={{ fontSize: 9, fill: "#a5d6ff" }}
           width={28}
+          tickFormatter={(v) => `${v}%`}
         />
         <Tooltip
           contentStyle={{
-            background: "#161b22",
+            background: "#1c2128",
             border: "1px solid #30363d",
-            fontSize: 11,
+            fontSize: 10,
+            borderRadius: 6,
           }}
-          labelFormatter={(v) => `${v}s`}
-          formatter={(v, name) =>
-            name === "temp"
-              ? [`${v.toFixed(1)} °C`, "溫度"]
-              : [`${v.toFixed(1)} %RH`, "濕度"]
-          }
+          labelStyle={{ color: "#8b949e", marginBottom: 4 }}
+          formatter={(v, name) => {
+            if (name === "sp_temp") return [`${v?.toFixed(1)} °C`, "SP 溫度"];
+            if (name === "pv_temp") return [`${v?.toFixed(1)} °C`, "PV 溫度"];
+            if (name === "sp_humi") return [`${v?.toFixed(1)} %RH`, "SP 濕度"];
+            if (name === "pv_humi") return [`${v?.toFixed(1)} %RH`, "PV 濕度"];
+            return [v, name];
+          }}
         />
-        {targetTemp != null && (
-          <ReferenceLine
-            yAxisId="temp"
-            y={targetTemp}
-            stroke="#484f58"
-            strokeDasharray="4 2"
-            strokeWidth={1}
-          />
-        )}
+        <Brush
+          dataKey="label"
+          startIndex={brushStart}
+          endIndex={brushEnd}
+          height={16}
+          stroke="#30363d"
+          fill="#0d1117"
+          travellerWidth={5}
+          style={{ fontSize: 8 }}
+        />
+        {/* SP 溫度（虛線，灰色） */}
+        <Line
+          yAxisId="temp"
+          type="linear"
+          dataKey="sp_temp"
+          name="sp_temp"
+          stroke="#555e6b"
+          strokeWidth={1.5}
+          strokeDasharray="5 3"
+          dot={false}
+          isAnimationActive={false}
+          connectNulls
+        />
+        {/* PV 溫度（實線，紅色） */}
         <Line
           yAxisId="temp"
           type="monotone"
-          dataKey="temp"
+          dataKey="pv_temp"
+          name="pv_temp"
           stroke="#ff7b72"
+          strokeWidth={2}
           dot={false}
-          strokeWidth={1.5}
           isAnimationActive={false}
+          connectNulls
         />
+        {/* SP 濕度（虛線，深藍） */}
+        {sop?.humidity_control && (
+          <Line
+            yAxisId="humi"
+            type="linear"
+            dataKey="sp_humi"
+            name="sp_humi"
+            stroke="#3a6b99"
+            strokeWidth={1}
+            strokeDasharray="5 3"
+            dot={false}
+            isAnimationActive={false}
+            connectNulls
+          />
+        )}
+        {/* PV 濕度（實線，藍色） */}
         <Line
           yAxisId="humi"
           type="monotone"
-          dataKey="humi"
+          dataKey="pv_humi"
+          name="pv_humi"
           stroke="#a5d6ff"
-          dot={false}
           strokeWidth={1.5}
+          dot={false}
           isAnimationActive={false}
+          connectNulls
         />
-      </LineChart>
+      </ComposedChart>
     </ResponsiveContainer>
   );
 };
@@ -384,29 +564,17 @@ const SOPPage = () => {
           });
           setAllDevices(map);
 
-          // 更新每台設備的 tempHistory，並在重啟後恢復 activeSop
+          // 恢復 activeSop（重啟後從後端 active_sop_json 還原）
           setDeviceStates((prev) => {
             const next = { ...prev };
             DEVICE_IDS.forEach((id) => {
               const current = map[id];
               if (!current) return;
               const prevDS = prev[id];
-              const newTick = prevDS.tick + 1;
-              const newHistory = [
-                ...prevDS.tempHistory,
-                {
-                  t: newTick,
-                  temp: current.temperature,
-                  humi: current.humidity,
-                },
-              ];
-
-              // 若後端有 active_sop_json 但前端 activeSop 是 null，則恢復
               let restoredSop = prevDS.activeSop;
               if (!restoredSop && current.active_sop_json) {
                 try {
                   const parsed = JSON.parse(current.active_sop_json);
-                  // 補上預設步驟（後端 active_sop_json 不含 steps）
                   if (!parsed.steps || parsed.steps.length === 0) {
                     parsed.steps = [
                       {
@@ -445,10 +613,9 @@ const SOPPage = () => {
                   }
                   restoredSop = parsed;
                 } catch {
-                  /* JSON 解析失敗，忽略 */
+                  /* ignore */
                 }
               }
-              // 若後端已無 active_sop_json（停止後），清空前端 activeSop
               if (
                 !current.active_sop_json &&
                 prevDS.activeSop &&
@@ -456,24 +623,66 @@ const SOPPage = () => {
               ) {
                 restoredSop = null;
               }
-
-              next[id] = {
-                ...prevDS,
-                tick: newTick,
-                activeSop: restoredSop,
-                tempHistory:
-                  newHistory.length > MAX_CHART_POINTS
-                    ? newHistory.slice(-MAX_CHART_POINTS)
-                    : newHistory,
-              };
+              next[id] = { ...prevDS, activeSop: restoredSop };
             });
             return next;
           });
+
+          // 每分鐘整點（秒數 0~4）更新 selectedDevice 的 PV 圖表資料
+          const now = new Date();
+          if (now.getSeconds() < 5) {
+            const selDevice = map[selectedDevice];
+            if (selDevice && selDevice.started_at) {
+              axios
+                .get(`${API}/api/devices/${selectedDevice}/history`)
+                .then((res) => {
+                  setDeviceStates((prev) => ({
+                    ...prev,
+                    [selectedDevice]: {
+                      ...prev[selectedDevice],
+                      chartHistory: res.data,
+                      chartStartedAt: selDevice.started_at,
+                    },
+                  }));
+                })
+                .catch(() => {});
+            }
+          }
         })
         .catch(() => {});
     }, 1000);
     return () => clearInterval(t);
   }, []);
+
+  // 切換設備或 started_at 改變時，重撈 PV 圖表資料
+  useEffect(() => {
+    const selDevice = allDevices[selectedDevice];
+    const startedAt = selDevice?.started_at;
+    if (!startedAt) {
+      setDeviceStates((prev) => ({
+        ...prev,
+        [selectedDevice]: {
+          ...prev[selectedDevice],
+          chartHistory: [],
+          chartStartedAt: null,
+        },
+      }));
+      return;
+    }
+    axios
+      .get(`${API}/api/devices/${selectedDevice}/history`)
+      .then((res) => {
+        setDeviceStates((prev) => ({
+          ...prev,
+          [selectedDevice]: {
+            ...prev[selectedDevice],
+            chartHistory: res.data,
+            chartStartedAt: startedAt,
+          },
+        }));
+      })
+      .catch(() => {});
+  }, [selectedDevice, allDevices[selectedDevice]?.started_at]);
 
   const handleSelectStd = (key) => {
     setSelectedStd(key);
@@ -566,7 +775,6 @@ const SOPPage = () => {
       }));
       const res = await axios.post(`${API}/api/sop-executions/`, {
         sop_id: ds.activeSop.sop_id,
-        device_id: selectedDevice,
         steps,
       });
       updateDS(selectedDevice, { savedExecutionId: res.data.id });
@@ -597,13 +805,13 @@ const SOPPage = () => {
                 letterSpacing: 0.5,
               }}
             >
-              {sc.label}
+              {data.status}
             </span>
             <span className="update-time">{data.timestamp}</span>
           </div>
         </div>
 
-        {/* 設備選擇器：每顆按鈕即時反映各自設備狀態顏色 */}
+        {/* 設備選擇器 */}
         <div
           style={{
             background: "#161b22",
@@ -627,9 +835,8 @@ const SOPPage = () => {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {DEVICE_IDS.map((id) => {
               const d = allDevices[id];
-              const devStatus = d?.status || "OFFLINE";
-              const s = STATUS_CONFIG[devStatus] || STATUS_CONFIG.OFFLINE;
-              const isSelected = id === selectedDevice;
+              const s = STATUS_CONFIG[d?.status] || STATUS_CONFIG.OFFLINE;
+              const active = id === selectedDevice;
               return (
                 <button
                   key={id}
@@ -640,31 +847,13 @@ const SOPPage = () => {
                     fontSize: 11,
                     cursor: "pointer",
                     fontFamily: "monospace",
-                    fontWeight: isSelected ? 700 : 400,
-                    // 選中：使用該設備狀態色作為邊框與背景
-                    // 未選中：也顯示狀態色，但背景較淡、邊框用 30% 透明度
-                    border: `1px solid ${isSelected ? s.color : s.color + "66"}`,
-                    background: isSelected ? s.bg : "#0d1117",
-                    color: isSelected ? s.color : s.color + "99",
+                    fontWeight: active ? 700 : 400,
+                    border: `1px solid ${active ? s.color : "#30363d"}`,
+                    background: active ? s.bg : "#0d1117",
+                    color: active ? s.color : "#8b949e",
                     transition: "all .15s",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 5,
                   }}
                 >
-                  {/* 狀態 dot */}
-                  <span
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      background: s.color,
-                      flexShrink: 0,
-                      // RUNNING 時加發光效果
-                      boxShadow:
-                        devStatus === "RUNNING" ? `0 0 6px ${s.color}` : "none",
-                    }}
-                  />
                   {id.replace("KSON_", "")}
                 </button>
               );
@@ -696,6 +885,84 @@ const SOPPage = () => {
           </div>
         </div>
 
+        {/* 執行資訊（測試進行中才顯示） */}
+        {isActive &&
+          ds.activeSop &&
+          data.started_at &&
+          (() => {
+            const sop = ds.activeSop;
+            const startedAt = new Date(data.started_at);
+            const now = new Date();
+            const elapsedMin = Math.floor((now - startedAt) / 60000);
+            const totalMin = (() => {
+              const spData = generateSP(sop);
+              return spData.length > 0 ? spData[spData.length - 1].min : 0;
+            })();
+            const endTime = new Date(startedAt.getTime() + totalMin * 60000);
+            const freeTimeMin = Math.max(0, totalMin - elapsedMin);
+            const freeH = Math.floor(freeTimeMin / 60);
+            const freeM = freeTimeMin % 60;
+            const totalStepCount = sop.steps?.length ?? 0;
+            const cycles = sop.cycles ?? 1;
+            const fmt = (d) =>
+              `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+            const rows = [
+              ["Pgm", sop.sop_id || "—"],
+              [
+                "Step",
+                `${doneCnt.toString().padStart(3, "0")}/${totalStepCount.toString().padStart(3, "0")}`,
+              ],
+              [
+                "Free Time",
+                `${String(freeH).padStart(4, "0")}:${String(freeM).padStart(2, "0")}`,
+              ],
+              [
+                "Cycle",
+                `${String(Math.min(doneCnt + 1, cycles)).padStart(4, "0")}/${String(cycles).padStart(4, "0")}`,
+              ],
+              ["Now Time", fmt(now)],
+              ["End Time", fmt(endTime)],
+            ];
+            return (
+              <div
+                style={{
+                  background: "#0d1117",
+                  border: "1px solid #30363d",
+                  borderLeft: "3px solid #58a6ff",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  marginBottom: 10,
+                  fontFamily: "monospace",
+                }}
+              >
+                {rows.map(([label, value]) => (
+                  <div
+                    key={label}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "3px 0",
+                      borderBottom: "1px solid #161b22",
+                    }}
+                  >
+                    <span style={{ color: "#484f58", fontSize: 11 }}>
+                      {label}
+                    </span>
+                    <span
+                      style={{
+                        color: "#cdd9e5",
+                        fontSize: 11,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
         <div className="info-card" style={{ padding: "14px 16px 10px" }}>
           <div
             style={{
@@ -708,16 +975,28 @@ const SOPPage = () => {
             <label style={{ fontSize: 11, color: "#484f58", letterSpacing: 1 }}>
               TEMP / HUMI TREND
             </label>
-            <div style={{ display: "flex", gap: 12, fontSize: 11 }}>
-              <span style={{ color: "#ff7b72" }}>
-                ● {data.temperature.toFixed(1)} °C
-              </span>
-              <span style={{ color: "#a5d6ff" }}>
-                ● {data.humidity.toFixed(1)} %RH
-              </span>
+            <div style={{ display: "flex", gap: 10, fontSize: 10 }}>
+              <span style={{ color: "#555e6b" }}>── SP</span>
+              <span style={{ color: "#ff7b72" }}>── PV Temp</span>
+              <span style={{ color: "#a5d6ff" }}>── PV Humi</span>
             </div>
           </div>
-          <TempChart data={ds.tempHistory} targetTemp={targetTemp} />
+          <TempChart
+            sop={ds.activeSop}
+            pvData={ds.chartHistory}
+            startedAt={ds.chartStartedAt}
+          />
+        </div>
+
+        <div
+          className="info-card humi-card"
+          style={{ borderLeft: "3px solid #a5d6ff" }}
+        >
+          <label>HUMI PV</label>
+          <div className="value-pv">
+            {data.humidity.toFixed(1)}
+            <span className="unit">%</span>
+          </div>
         </div>
       </aside>
 
@@ -750,7 +1029,7 @@ const SOPPage = () => {
                   border: `1px solid ${sc.color}44`,
                 }}
               >
-                {selectedDevice} — {sc.label}
+                {selectedDevice} — {data.status}
               </span>
             </div>
             <p className="task-desc">
@@ -809,100 +1088,63 @@ const SOPPage = () => {
               <p style={{ color: "#8b949e", fontSize: 12, marginBottom: 14 }}>
                 請依序確認每個步驟已完成：
               </p>
-              {(ds.activeSop.steps || []).map((step, idx) => {
-                const steps = ds.activeSop.steps;
-                // 判斷此步驟是否可勾：第一步永遠可勾，其餘需前一步完成
-                // Optional 步驟：往前找第一個非 optional 步驟確認是否完成
-                const isLocked = (() => {
-                  if (idx === 0) return false;
-                  // 找前一個非 optional 步驟
-                  for (let i = idx - 1; i >= 0; i--) {
-                    if (!steps[i].optional) {
-                      return !ds.completedSteps[steps[i].step_id];
+              {(ds.activeSop.steps || []).map((step) => (
+                <label
+                  key={step.step_id}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    marginBottom: 12,
+                    cursor: "pointer",
+                    color: ds.completedSteps[step.step_id]
+                      ? "#57ab5a"
+                      : "#cdd9e5",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!ds.completedSteps[step.step_id]}
+                    onChange={() =>
+                      updateDS(selectedDevice, {
+                        completedSteps: {
+                          ...ds.completedSteps,
+                          [step.step_id]: !ds.completedSteps[step.step_id],
+                        },
+                      })
                     }
-                  }
-                  return false;
-                })();
-
-                const isChecked = !!ds.completedSteps[step.step_id];
-
-                const handleToggle = () => {
-                  if (isLocked) return;
-                  const newCompleted = { ...ds.completedSteps };
-                  if (isChecked) {
-                    // 取消時連鎖清除此步驟之後所有步驟
-                    steps.forEach((s) => {
-                      if (s.step_id >= step.step_id) {
-                        delete newCompleted[s.step_id];
-                      }
-                    });
-                  } else {
-                    newCompleted[step.step_id] = true;
-                  }
-                  updateDS(selectedDevice, { completedSteps: newCompleted });
-                  // 同步後端 completed_steps
-                  const count =
-                    Object.values(newCompleted).filter(Boolean).length;
-                  axios
-                    .post(`${API}/api/devices/${selectedDevice}/progress`, {
-                      completed: count,
-                    })
-                    .catch(() => {});
-                };
-
-                return (
-                  <label
-                    key={step.step_id}
-                    onClick={handleToggle}
                     style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      marginBottom: 12,
-                      cursor: isLocked ? "not-allowed" : "pointer",
-                      opacity: isLocked ? 0.4 : 1,
-                      color: isChecked ? "#57ab5a" : "#cdd9e5",
+                      marginTop: 3,
+                      accentColor: "#57ab5a",
+                      flexShrink: 0,
                     }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => {}}
-                      disabled={isLocked}
-                      style={{
-                        marginTop: 3,
-                        accentColor: "#57ab5a",
-                        flexShrink: 0,
-                        cursor: isLocked ? "not-allowed" : "pointer",
-                      }}
-                    />
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 12 }}>
-                        Step {step.step_id}. {step.name}
-                        {step.optional && (
-                          <span
-                            style={{
-                              marginLeft: 6,
-                              fontSize: 10,
-                              padding: "1px 6px",
-                              background: "#21262d",
-                              color: "#8b949e",
-                              borderRadius: 4,
-                            }}
-                          >
-                            Optional
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        style={{ fontSize: 11, color: "#8b949e", marginTop: 2 }}
-                      >
-                        {step.description}
-                      </div>
+                  />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 12 }}>
+                      Step {step.step_id}. {step.name}
+                      {step.optional && (
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            fontSize: 10,
+                            padding: "1px 6px",
+                            background: "#21262d",
+                            color: "#8b949e",
+                            borderRadius: 4,
+                          }}
+                        >
+                          Optional
+                        </span>
+                      )}
                     </div>
-                  </label>
-                );
-              })}
+                    <div
+                      style={{ fontSize: 11, color: "#8b949e", marginTop: 2 }}
+                    >
+                      {step.description}
+                    </div>
+                  </div>
+                </label>
+              ))}
               <div style={{ marginTop: 8, marginBottom: 4 }}>
                 <div
                   style={{
