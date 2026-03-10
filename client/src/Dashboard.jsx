@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import {
   LineChart,
@@ -21,6 +21,14 @@ const STATUS_CONFIG = {
   EMERGENCY: { color: "#f85149", bg: "#2d0f0f", label: "EMERGENCY" },
 };
 
+const DEVICE_IDS = [
+  "KSON_CH01",
+  "KSON_CH02",
+  "KSON_CH03",
+  "KSON_CH04",
+  "KSON_CH05",
+];
+
 const card = {
   background: "#161b22",
   border: "1px solid #30363d",
@@ -29,20 +37,28 @@ const card = {
 };
 
 // ── 單台設備卡片 ──────────────────────────────────────────
-const DeviceCard = ({ device }) => {
+const DeviceCard = ({ device, selected, onClick }) => {
   const sc = STATUS_CONFIG[device.status] || STATUS_CONFIG.OFFLINE;
   const isActive = ["RUNNING", "PAUSED", "FINISHING", "EMERGENCY"].includes(
     device.status,
   );
+  const totalSteps = device.total_steps || 0;
+  const completedSteps = device.completed_steps || 0;
+  const progressPct = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
 
   return (
     <div
+      onClick={onClick}
       style={{
         ...card,
         borderLeft: `3px solid ${sc.color}`,
         display: "flex",
         flexDirection: "column",
         gap: 12,
+        cursor: "pointer",
+        outline: selected ? `2px solid ${sc.color}` : "none",
+        outlineOffset: 2,
+        transition: "outline 0.15s",
       }}
     >
       {/* 標題列 */}
@@ -151,6 +167,48 @@ const DeviceCard = ({ device }) => {
       >
         {isActive ? device.running_sop_name : "STANDBY (IDLE)"}
       </div>
+
+      {/* 步驟進度條：total_steps 由後端回傳，修正原本永遠不顯示的問題 */}
+      {isActive && totalSteps > 0 && (
+        <div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 4,
+            }}
+          >
+            <span style={{ fontSize: 10, color: "#484f58" }}>步驟進度</span>
+            <span
+              style={{
+                fontSize: 10,
+                color: "#8b949e",
+                fontFamily: "monospace",
+              }}
+            >
+              {completedSteps}/{totalSteps}
+            </span>
+          </div>
+          <div
+            style={{
+              height: 4,
+              background: "#21262d",
+              borderRadius: 2,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                borderRadius: 2,
+                background: progressPct === 100 ? "#57ab5a" : sc.color,
+                width: `${progressPct}%`,
+                transition: "width 0.3s ease",
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -158,38 +216,74 @@ const DeviceCard = ({ device }) => {
 // ── 主元件 ────────────────────────────────────────────────
 const Dashboard = () => {
   const [devices, setDevices] = useState([]);
-  const [history, setHistory] = useState([]);
+  const [selectedDevice, setSelectedDevice] = useState("KSON_CH01");
+  const historyRef = useRef(
+    Object.fromEntries(DEVICE_IDS.map((id) => [id, []])),
+  );
+  const [historyTick, setHistoryTick] = useState(0);
+  const lastMinuteRef = useRef(-1);
   const [executions, setExecutions] = useState([]);
 
+  // 切換設備時從 history API 補撈歷史資料
+  useEffect(() => {
+    axios
+      .get(`${API}/api/devices/${selectedDevice}/history`)
+      .then((r) => {
+        historyRef.current[selectedDevice] = r.data.map((p) => ({
+          time: p.time,
+          temperature: p.temperature,
+          humidity: p.humidity,
+        }));
+        setHistoryTick((t) => t + 1);
+      })
+      .catch((err) => console.error("[Dashboard] history fetch:", err));
+  }, [selectedDevice]);
+
+  // 每秒更新溫濕度數字，每分鐘整點存一個趨勢圖資料點
   useEffect(() => {
     const fetchDevices = async () => {
       try {
         const res = await axios.get(`${API}/api/devices`);
         setDevices(res.data);
-        // 用 CH01 的溫度代表趨勢圖
-        const ch01 = res.data.find((d) => d.device_id === "KSON_CH01");
-        if (ch01) {
-          setHistory((prev) => [
-            ...prev.slice(-59),
-            {
-              time: ch01.timestamp,
-              temperature: ch01.temperature,
-              humidity: ch01.humidity,
-            },
-          ]);
+
+        const now = new Date();
+        const currentMinute = now.getHours() * 60 + now.getMinutes();
+        if (now.getSeconds() < 5 && currentMinute !== lastMinuteRef.current) {
+          lastMinuteRef.current = currentMinute;
+          const label = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+          res.data.forEach((d) => {
+            const buf = historyRef.current[d.device_id];
+            if (buf) {
+              buf.push({
+                time: label,
+                temperature: d.temperature,
+                humidity: d.humidity,
+              });
+              if (buf.length > 60) buf.shift();
+            }
+          });
+          setHistoryTick((t) => t + 1);
         }
-      } catch (err) {}
+      } catch (err) {
+        console.error("[Dashboard] devices fetch:", err);
+      }
     };
     const interval = setInterval(fetchDevices, 1000);
     fetchDevices();
     return () => clearInterval(interval);
   }, []);
 
+  // 執行紀錄每 30 秒刷新一次
   useEffect(() => {
-    axios
-      .get(`${API}/api/reports/list`)
-      .then((r) => setExecutions(r.data))
-      .catch(() => {});
+    const fetchExecutions = () => {
+      axios
+        .get(`${API}/api/reports/list`)
+        .then((r) => setExecutions(r.data))
+        .catch((err) => console.error("[Dashboard] executions fetch:", err));
+    };
+    fetchExecutions();
+    const t = setInterval(fetchExecutions, 30000);
+    return () => clearInterval(t);
   }, []);
 
   const runningCount = devices.filter((d) => d.status === "RUNNING").length;
@@ -197,6 +291,7 @@ const Dashboard = () => {
   const idleCount = devices.filter((d) =>
     ["IDLE", "OFFLINE"].includes(d.status),
   ).length;
+  const history = historyRef.current[selectedDevice] || [];
 
   return (
     <div
@@ -244,72 +339,153 @@ const Dashboard = () => {
         }}
       >
         {devices.map((device) => (
-          <DeviceCard key={device.device_id} device={device} />
+          <DeviceCard
+            key={device.device_id}
+            device={device}
+            selected={device.device_id === selectedDevice}
+            onClick={() => setSelectedDevice(device.device_id)}
+          />
         ))}
       </div>
 
-      {/* 趨勢圖 (CH01) */}
+      {/* 趨勢圖 */}
       <div style={{ ...card, marginBottom: 24 }}>
         <div
           style={{
-            color: "#8b949e",
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: 1,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
             marginBottom: 16,
           }}
         >
-          KSON_CH01 — TEMP / HUMI TREND（最近 60 秒）
-        </div>
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart
-            data={history}
-            margin={{ top: 5, right: 16, left: -10, bottom: 5 }}
+          <div
+            style={{
+              color: "#8b949e",
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: 1,
+            }}
           >
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="#21262d"
-              vertical={false}
-            />
-            <XAxis
-              dataKey="time"
-              stroke="#30363d"
-              tick={{ fontSize: 10, fill: "#484f58" }}
-              hide={history.length < 2}
-            />
-            <YAxis
-              stroke="#30363d"
-              domain={["auto", "auto"]}
-              tick={{ fontSize: 10, fill: "#484f58" }}
-            />
-            <Tooltip
-              contentStyle={{
-                background: "#161b22",
-                border: "1px solid #30363d",
-                fontSize: 11,
-              }}
-              itemStyle={{ color: "#cdd9e5" }}
-            />
-            <Line
-              type="monotone"
-              dataKey="temperature"
-              name="溫度 (°C)"
-              stroke="#ff7b72"
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="humidity"
-              name="濕度 (%RH)"
-              stroke="#a5d6ff"
-              strokeWidth={1.5}
-              dot={false}
-              isAnimationActive={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+            {selectedDevice} — TEMP / HUMI TREND（最近 60 分鐘）
+          </div>
+          {/* CH01~CH05 切換按鈕 */}
+          <div style={{ display: "flex", gap: 6 }}>
+            {DEVICE_IDS.map((id) => {
+              const d = devices.find((x) => x.device_id === id);
+              const sc = STATUS_CONFIG[d?.status] || STATUS_CONFIG.OFFLINE;
+              const active = id === selectedDevice;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setSelectedDevice(id)}
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: 5,
+                    fontSize: 10,
+                    cursor: "pointer",
+                    fontFamily: "monospace",
+                    fontWeight: active ? 700 : 400,
+                    border: `1px solid ${active ? sc.color : "#30363d"}`,
+                    background: active ? sc.bg : "#0d1117",
+                    color: active ? sc.color : "#484f58",
+                    transition: "all .15s",
+                    boxShadow:
+                      active && d?.status === "RUNNING"
+                        ? `0 0 6px ${sc.color}66`
+                        : "none",
+                  }}
+                >
+                  {id.replace("KSON_", "")}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {history.length < 2 ? (
+          <div
+            style={{
+              height: 220,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#484f58",
+              fontSize: 12,
+            }}
+          >
+            等待資料累積中（每分鐘記錄一點）...
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart
+              data={history}
+              margin={{ top: 5, right: 44, left: -10, bottom: 5 }}
+            >
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="#21262d"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="time"
+                stroke="#30363d"
+                tick={{ fontSize: 10, fill: "#484f58" }}
+              />
+              {/* 溫度 Y 軸（左） */}
+              <YAxis
+                yAxisId="temp"
+                orientation="left"
+                domain={["auto", "auto"]}
+                stroke="#30363d"
+                tick={{ fontSize: 10, fill: "#ff7b72" }}
+                tickFormatter={(v) => `${v}°`}
+                width={36}
+              />
+              {/* 濕度 Y 軸（右），避免與溫度共用同一刻度 */}
+              <YAxis
+                yAxisId="humi"
+                orientation="right"
+                domain={[0, 100]}
+                stroke="#30363d"
+                tick={{ fontSize: 10, fill: "#a5d6ff" }}
+                tickFormatter={(v) => `${v}%`}
+                width={32}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "#161b22",
+                  border: "1px solid #30363d",
+                  fontSize: 11,
+                }}
+                labelStyle={{ color: "#8b949e", marginBottom: 4 }}
+                formatter={(v, name) => [
+                  `${v.toFixed(1)}${name === "temperature" ? " °C" : " %RH"}`,
+                  name === "temperature" ? "溫度" : "濕度",
+                ]}
+              />
+              <Line
+                yAxisId="temp"
+                type="monotone"
+                dataKey="temperature"
+                name="temperature"
+                stroke="#ff7b72"
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Line
+                yAxisId="humi"
+                type="monotone"
+                dataKey="humidity"
+                name="humidity"
+                stroke="#a5d6ff"
+                strokeWidth={1.5}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* 執行紀錄 */}
@@ -342,19 +518,21 @@ const Dashboard = () => {
           >
             <thead>
               <tr style={{ borderBottom: "1px solid #30363d" }}>
-                {["ID", "SOP ID", "執行時間", "報告"].map((h) => (
-                  <th
-                    key={h}
-                    style={{
-                      padding: "6px 12px",
-                      textAlign: "left",
-                      color: "#8b949e",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
+                {["ID", "SOP ID", "設備", "執行人員", "測試開始", "報告"].map(
+                  (h) => (
+                    <th
+                      key={h}
+                      style={{
+                        padding: "6px 12px",
+                        textAlign: "left",
+                        color: "#8b949e",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ),
+                )}
               </tr>
             </thead>
             <tbody>
@@ -372,8 +550,20 @@ const Dashboard = () => {
                   >
                     {ex.sop_id}
                   </td>
+                  <td
+                    style={{
+                      padding: "8px 12px",
+                      color: "#8b949e",
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    {ex.device_id || "—"}
+                  </td>
                   <td style={{ padding: "8px 12px", color: "#8b949e" }}>
-                    {ex.created_at}
+                    {ex.operator || "—"}
+                  </td>
+                  <td style={{ padding: "8px 12px", color: "#8b949e" }}>
+                    {ex.test_started_at || ex.created_at}
                   </td>
                   <td style={{ padding: "8px 12px" }}>
                     <button
