@@ -139,6 +139,8 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
     active_sop_data = {**std_data, "sop_id": sop_id, "name": sop_name}
     active_sop_json = json.dumps(active_sop_data, ensure_ascii=False)
     device["active_sop_json"] = active_sop_json
+    device["completed_steps"] = 0
+    device["started_at"] = dt.datetime.now(dt.timezone.utc)
     with SessionLocal() as db:
         state = db.get(DeviceState, device_id)
         if state is None:
@@ -150,6 +152,7 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
         state.standard_id = sop_id
         state.active_sop_json = active_sop_json
         state.completed_steps = 0
+        state.started_at = dt.datetime.now(dt.timezone.utc)
         state.updated_at = dt.datetime.now(dt.timezone.utc)
         db.commit()
 

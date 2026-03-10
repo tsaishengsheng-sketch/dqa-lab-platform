@@ -46,6 +46,7 @@ def _save_device_state(device_id: str, item: dict):
         state.standard_id = item.get("standard_id")
         state.active_sop_json = item.get("active_sop_json")
         state.completed_steps = item.get("completed_steps", 0)
+        state.started_at = item.get("started_at")
         state.updated_at = datetime.datetime.now(datetime.timezone.utc)
         db.commit()
 
@@ -89,6 +90,9 @@ async def get_all_devices():
             "timestamp": now,
             "active_sop_json": item.get("active_sop_json"),
             "completed_steps": item.get("completed_steps", 0),
+            "started_at": item.get("started_at").isoformat()
+            if item.get("started_at")
+            else None,
         }
         for device_id, item in app.state.AICM_CACHE.items()
     ]
@@ -150,6 +154,7 @@ async def emergency_stop(device_id: str):
             "running_sop_name": "🚨 緊急停止中 - 待確認安全",
             "active_sop_json": None,
             "completed_steps": 0,
+            "started_at": None,
         }
     )
     _save_device_state(device_id, device)
@@ -189,6 +194,7 @@ async def normal_stop(device_id: str):
             "running_sop_name": "系統自動降溫收尾中...",
             "active_sop_json": None,
             "completed_steps": 0,
+            "started_at": None,
         }
     )
     _save_device_state(device_id, device)
@@ -322,6 +328,7 @@ async def startup_event():
                 "standard_id": s.standard_id,
                 "active_sop_json": s.active_sop_json,
                 "completed_steps": s.completed_steps or 0,
+                "started_at": s.started_at,
             }
             print(
                 f"🔄 [{device_id}] 恢復狀態：{restored_status}，溫度：{s.temperature}°C"
