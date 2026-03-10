@@ -4,6 +4,78 @@
 
 ---
 
+## 2026-03-10（Code Review 全面修正）
+
+### 後端
+
+**models.py**
+- **fix**: `SopExecution.test_started_at / test_ended_at` 型別由 `String` 改為 `DateTime`，修正報告中時間永遠顯示 N/A 的問題
+- **fix**: `StepRecord.execution_id` 補上 `ForeignKey("sop_executions.id")`
+- **fix**: `StepRecord.completed` 型別由 `String` 改為 `Boolean`
+- **fix**: `DeviceState.updated_at` 補上 `onupdate` 自動更新時間戳
+
+**main.py**
+- **fix**: `@app.on_event("startup")` 改為 `@asynccontextmanager lifespan`，移除 FastAPI 棄用警告
+- **fix**: 新增 `_now_utc()` 統一所有時間戳，解決 naive/aware datetime 混用問題
+- **fix**: `update_progress` payload 改為 `ProgressPayload(BaseModel)`，修正原本用 `dict` 接收導致的 422 錯誤
+- **fix**: `/api/devices` 回傳新增 `total_steps`（從 `active_sop_json` 解析），修正前端 DeviceCard 進度條永遠不顯示的問題
+- **fix**: 模擬器改為每台設備獨立 `with SessionLocal() as db`，修正一台出錯導致全部 rollback 的問題
+- **fix**: `FINISHING→IDLE` 補上清空 `running_sop_id / standard_id`
+
+**sop.py**
+- **fix**: `import datetime` 從函式內部移至頂層
+- **fix**: `create_execution` 新增 `device_id`、`operator`、`test_started_at`、`test_ended_at` 欄位
+- **fix**: `create_execution` 改為 `db.flush()` + 單次 `db.commit()`，修正各步驟各自 commit 不安全的問題
+
+**reports.py**
+- **fix**: 報告欄位鍵名 `dwell_time` → `dwell_time_hours`、`humidity` → `humidity_rh_percent`，修正報告停留時間與濕度永遠顯示 N/A 的問題
+- **fix**: 新增 `_fmt_dt()` helper，安全格式化 `DateTime` 欄位，修正 `strftime()` 在 String 型別下的 AttributeError
+- **fix**: `sop_data` 查詢改為直接用 `sop_id` 查，移除多餘迴圈
+- **fix**: 移除模糊備用時間區間邏輯，測試時間未記錄時明確標示
+- **fix**: 檔名改為 RFC 5987 編碼（`filename*=UTF-8''...`），修正非 ASCII 檔名下載問題
+- **feat**: 新增 `GET /api/reports/list` 回傳所有執行紀錄
+
+**errors.py**
+- **fix**: `created_at` 改為 `datetime.datetime` 型別，由 FastAPI 自動序列化為 ISO 8601，移除手動 `strftime` 迴圈
+
+**standards.py**
+- **fix**: `_build_flat_standards()` 新增重複 `sop_id` 警告，避免靜默覆蓋
+- **feat**: EN 50155:2017 新增 OT5 低溫冷測（-40°C，16h）
+- **feat**: DNV Std.Cert.2.4 新增 Class C 乾熱（+55°C）與 Class D 乾熱（+70°C）
+- 測試條件總數：62 → 64
+
+### 前端
+
+**index.css**
+- **fix**: 統一背景色為 `#0d1117`，`#root` 設定 `height: 100vh + flex`，修正高度鏈中斷
+
+**App.css**
+- **chore**: 清空 Vite 殘留樣式
+
+**SOPPage.css**
+- **fix**: `.control-side` 新增 `height: 100%`、`overflow: hidden`，修正右側面板高度與捲動問題
+
+**Dashboard.jsx**
+- **fix**: 切換設備時從 history API 補撈歷史資料，修正切換後圖表清空的問題
+- **fix**: 趨勢圖改為雙 Y 軸（溫度左軸/濕度右軸），避免刻度混用
+- **feat**: 執行紀錄列表每 30 秒自動刷新
+
+**SOPPage.jsx**
+- **fix**: 步驟勾選改為依序鎖定，前一步未完成不可勾選後一步
+- **fix**: 取消步驟時連鎖清除後續所有步驟
+- **fix**: 每次勾選/取消即時呼叫後端 `progress` API 同步
+- **fix**: 法規選擇（selectedStd/Ver/Test）改為 per-device state，切換設備不互相干擾
+- **fix**: `generateSP()` 單次測試 `startTemp` 計算邏輯修正
+- **fix**: `useEffect` dependency 改為 `startedAt` 字串，避免無限迴圈
+- **fix**: `create_execution` 呼叫補上 `device_id`、`test_started_at`
+
+**Errorlog.jsx**
+- **fix**: `minHeight: 100vh` 改為 `height: 100% + overflowY: auto`，修正版面溢出
+- **fix**: 新增 `fmtDatetime()` 統一處理 ISO 8601 時間字串（配合 errors.py 修正）
+- **feat**: 每 10 秒自動刷新異常紀錄
+
+---
+
 ## 2026-03-10（續2）
 
 - **fix**: `Dashboard.jsx` `minHeight: 100vh` 改為 `height: 100% + overflowY: auto`，修復儀表板無法向下捲動
