@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 from .sop import router as sop_router, execution_router, DEVICE_IDS
 from .reports import router as reports_router
 from .errors import router as errors_router
@@ -130,6 +131,69 @@ def _make_description(status: str, sop_name: str) -> str:
     }.get(status, "等待連線...")
 
 
+def _calc_estimated_end_at(item: dict) -> Optional[str]:
+    """
+    根據 active_sop_json 計算預估結束時間。
+    回傳 ISO 8601 字串，或 None（無法計算時）。
+
+    計算邏輯：
+      起始溫度固定 25°C
+      ramp_up   = abs(target_high - 25) / ramp_rate (分鐘)
+      ramp_down = abs(target_high - target_low) / ramp_rate (分鐘，僅循環測試)
+      dwell     = dwell_time_hours * 60 (分鐘)
+      單次測試   = ramp_up + dwell
+      循環測試   = (ramp_up + dwell + ramp_down + dwell_low) * cycles
+                  （dwell_low 視為與 dwell 相同，法規通常對稱）
+    """
+    status = item.get("status")
+    if status not in ("RUNNING", "PAUSED"):
+        return None
+
+    started_at = item.get("started_at")
+    active_sop_json = item.get("active_sop_json")
+    if not started_at or not active_sop_json:
+        return None
+
+    try:
+        sop = json.loads(active_sop_json)
+    except Exception:
+        return None
+
+    ramp_rate = sop.get("ramp_rate") or 1.0  # °C/min，預設 1
+    dwell_hours = sop.get("dwell_time_hours") or 0.0
+    dwell_min = dwell_hours * 60.0
+    cycles = sop.get("cycles") or 1
+
+    high_temp = sop.get("high_temperature") or sop.get("target_temperature") or 25.0
+    low_temp = sop.get("low_temperature")
+
+    ramp_up_min = abs(high_temp - 25.0) / ramp_rate
+
+    if low_temp is not None:
+        # 循環測試：升溫→高溫停留→降溫→低溫停留，重複 cycles 次
+        ramp_down_min = abs(high_temp - low_temp) / ramp_rate
+        ramp_back_min = abs(low_temp - 25.0) / ramp_rate
+        one_cycle_min = ramp_up_min + dwell_min + ramp_down_min + dwell_min
+        total_min = one_cycle_min * cycles + ramp_back_min
+    else:
+        # 單次測試：升溫→停留→降溫回 25°C
+        ramp_down_min = abs(high_temp - 25.0) / ramp_rate
+        total_min = ramp_up_min + dwell_min + ramp_down_min
+
+    total_seconds = total_min * 60.0
+
+    # 統一轉成 UTC-aware datetime
+    if isinstance(started_at, str):
+        started_dt = datetime.datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+    else:
+        started_dt = started_at
+    if started_dt.tzinfo is None:
+        started_dt = started_dt.replace(tzinfo=datetime.timezone.utc)
+
+    estimated_end = started_dt + datetime.timedelta(seconds=total_seconds)
+    return estimated_end.isoformat()
+
+
 # ============================================================
 # 設備狀態 API
 # ============================================================
@@ -159,6 +223,7 @@ async def get_all_devices():
             "started_at": item.get("started_at").isoformat()
             if item.get("started_at")
             else None,
+            "estimated_end_at": _calc_estimated_end_at(item),
         }
         for device_id, item in app.state.AICM_CACHE.items()
     ]
