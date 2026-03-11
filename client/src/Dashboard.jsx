@@ -37,7 +37,7 @@ const card = {
   padding: "20px 24px",
 };
 
-// ── 倒數計時 hook ─────────────────────────────────────────
+// ── 倒數計時 hook（純前端計算，不依賴 API 輪詢）────────────
 const useCountdown = (estimatedEndAt) => {
   const [remaining, setRemaining] = useState(null);
 
@@ -243,7 +243,7 @@ const DeviceCard = ({ device, selected, onClick }) => {
         </div>
       )}
 
-      {/* 倒數計時器 */}
+      {/* 倒數計時器（純前端 1 秒更新，不依賴 API）*/}
       {showCountdown && countdown !== null && (
         <div
           style={{
@@ -301,7 +301,9 @@ const Dashboard = () => {
       .catch((err) => console.error("[Dashboard] history fetch:", err));
   }, [selectedDevice]);
 
-  // 每秒更新溫濕度數字，每分鐘整點存一個趨勢圖資料點
+  // 每 10 秒向後端 fetch 一次設備狀態
+  // 趨勢圖：只在整分鐘（seconds < 10）才存一個點，避免重複
+  // 倒數計時器由 useCountdown hook 自行每秒更新，不依賴此 interval
   useEffect(() => {
     const fetchDevices = async () => {
       try {
@@ -310,7 +312,7 @@ const Dashboard = () => {
 
         const now = new Date();
         const currentMinute = now.getHours() * 60 + now.getMinutes();
-        if (now.getSeconds() < 5 && currentMinute !== lastMinuteRef.current) {
+        if (now.getSeconds() < 10 && currentMinute !== lastMinuteRef.current) {
           lastMinuteRef.current = currentMinute;
           const label = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
           res.data.forEach((d) => {
@@ -330,12 +332,13 @@ const Dashboard = () => {
         console.error("[Dashboard] devices fetch:", err);
       }
     };
-    const interval = setInterval(fetchDevices, 1000);
+    // 改為每 10 秒 fetch 一次（原本每秒），狀態變化感知仍足夠
+    const interval = setInterval(fetchDevices, 10000);
     fetchDevices();
     return () => clearInterval(interval);
   }, []);
 
-  // 執行紀錄每 30 秒刷新一次
+  // 執行紀錄：有新 SOP 啟動才會變，每 60 秒刷新即可（原本 30 秒）
   useEffect(() => {
     const fetchExecutions = () => {
       axios
@@ -344,7 +347,7 @@ const Dashboard = () => {
         .catch((err) => console.error("[Dashboard] executions fetch:", err));
     };
     fetchExecutions();
-    const t = setInterval(fetchExecutions, 30000);
+    const t = setInterval(fetchExecutions, 60000);
     return () => clearInterval(t);
   }, []);
 
