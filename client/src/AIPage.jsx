@@ -92,8 +92,8 @@ function inlineMarkdown(text) {
   return parts;
 }
 
-// ── 快速提問 ─────────────────────────────────────────────────
-const QUICK_QUESTIONS = [
+// ── 預設快速提問（靜態，對話前顯示）────────────────────────
+const DEFAULT_QUESTIONS = [
   "我有鐵路車載電子設備，需要哪些環境測試？",
   "IEC 60068 和 EN 50155 有什麼差別？",
   "我的產品要在戶外使用，適合哪個法規？",
@@ -171,6 +171,11 @@ export default function AIPage() {
   const [loading, setLoading] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // 動態追問狀態
+  const [suggestions, setSuggestions] = useState(null); // null = 顯示預設；string[] = 動態追問
+  const [suggestLoading, setSuggestLoading] = useState(false);
+
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const abortControllerRef = useRef(null);
@@ -186,6 +191,45 @@ export default function AIPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamText]);
+
+  // ── 產生動態追問建議 ────────────────────────────────────────
+  const generateSuggestions = useCallback(async (currentMessages) => {
+    setSuggestLoading(true);
+    setSuggestions(null);
+    try {
+      // 取最近 6 則對話作為上下文，避免 prompt 過長
+      const recentHistory = currentMessages.slice(-6).map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+      const prompt =
+        "根據以上對話內容，產生 3 個使用者接下來可能想追問的問題。" +
+        '只回傳 JSON 陣列，不要其他文字，格式：["問題一","問題二","問題三"]';
+
+      const res = await fetch(`${API_BASE}/api/ai/standards-query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: prompt, history: recentHistory }),
+      });
+      if (!res.ok) throw new Error("建議產生失敗");
+      const data = await res.json();
+      const raw = data.response || "";
+      // 嘗試解析 JSON，失敗就回預設
+      const match = raw.match(/\[[\s\S]*\]/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSuggestions(parsed.slice(0, 3));
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("[AIPage] 追問建議產生失敗，回預設", err);
+    } finally {
+      setSuggestLoading(false);
+    }
+    // 失敗時維持 null（顯示預設）
+  }, []);
 
   const stopStream = () => {
     const currentText = streamTextRef.current;
@@ -252,10 +296,13 @@ export default function AIPage() {
           const elapsed = ((Date.now() - startTimeRef.current) / 1000).toFixed(
             1,
           );
-          setMessages((prev) => [
-            ...prev,
+          const finalMessages = [
+            ...newMessages,
             { role: "assistant", content: fullText, elapsed },
-          ]);
+          ];
+          setMessages(finalMessages);
+          // 串流完成後，非同步產生追問建議
+          generateSuggestions(finalMessages);
         }
       } catch (err) {
         if (err.name !== "AbortError") {
@@ -277,11 +324,12 @@ export default function AIPage() {
         }
       }
     },
-    [messages, input, loading],
+    [messages, input, loading, generateSuggestions],
   );
 
   const clearChat = () => {
     setMessages([]);
+    setSuggestions(null);
     setInput("");
     try {
       localStorage.removeItem(STORAGE_KEY);
@@ -296,6 +344,10 @@ export default function AIPage() {
     }
   };
 
+  // 目前顯示的問題列表
+  const currentQuestions = suggestions ?? DEFAULT_QUESTIONS;
+  const isDynamic = suggestions !== null;
+
   return (
     <div style={styles.page}>
       {/* ── 左側欄 ── */}
@@ -306,36 +358,69 @@ export default function AIPage() {
           minWidth: sidebarOpen ? 240 : 36,
         }}
       >
-        {/* 頂部：標題 + 收合按鈕同一行 */}
+        {/* 頂部：標題 + 重置 + 收合 */}
         <div style={styles.sidebarHeader}>
-          {sidebarOpen && <span style={styles.sidebarTitle}>⚡ 快速提問</span>}
-          <button
-            style={styles.toggleBtn}
-            onClick={() => setSidebarOpen((v) => !v)}
-            title={sidebarOpen ? "收合側欄" : "展開側欄"}
-          >
-            {sidebarOpen ? "◀" : "▶"}
-          </button>
+          {sidebarOpen && (
+            <span style={styles.sidebarTitle}>
+              {isDynamic ? "💡 追問建議" : "⚡ 快速提問"}
+            </span>
+          )}
+          <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+            {/* 重置回預設按鈕，只在顯示動態追問時出現 */}
+            {sidebarOpen && isDynamic && (
+              <button
+                style={styles.resetBtn}
+                onClick={() => setSuggestions(null)}
+                title="回到預設問題"
+              >
+                ↺
+              </button>
+            )}
+            <button
+              style={styles.toggleBtn}
+              onClick={() => setSidebarOpen((v) => !v)}
+              title={sidebarOpen ? "收合側欄" : "展開側欄"}
+            >
+              {sidebarOpen ? "◀" : "▶"}
+            </button>
+          </div>
         </div>
 
         {sidebarOpen && (
           <>
-            {QUICK_QUESTIONS.map((q, i) => (
-              <button
-                key={i}
-                style={styles.quickBtn}
-                onClick={() => sendMessage(q)}
-                disabled={loading}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = "#21262d")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = "transparent")
-                }
-              >
-                {q}
-              </button>
-            ))}
+            {/* 產生追問建議中的 loading */}
+            {suggestLoading ? (
+              <div style={styles.suggestLoading}>
+                <span style={{ ...styles.dot, animationDelay: "0ms" }} />
+                <span style={{ ...styles.dot, animationDelay: "200ms" }} />
+                <span style={{ ...styles.dot, animationDelay: "400ms" }} />
+                <span style={{ fontSize: 11, color: "#8b949e", marginLeft: 4 }}>
+                  產生建議中...
+                </span>
+              </div>
+            ) : (
+              currentQuestions.map((q, i) => (
+                <button
+                  key={i}
+                  style={{
+                    ...styles.quickBtn,
+                    borderLeft: isDynamic ? "2px solid #58a6ff33" : "none",
+                    paddingLeft: isDynamic ? 8 : 10,
+                  }}
+                  onClick={() => sendMessage(q)}
+                  disabled={loading}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = "#21262d")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = "transparent")
+                  }
+                >
+                  {q}
+                </button>
+              ))
+            )}
+
             <div style={{ marginTop: "auto", paddingTop: 16 }}>
               <button
                 style={styles.clearBtn}
@@ -473,9 +558,9 @@ const styles = {
   sidebarHeader: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
     marginBottom: 8,
     minHeight: 28,
+    gap: 4,
   },
   sidebarTitle: {
     fontSize: 11,
@@ -497,6 +582,19 @@ const styles = {
     lineHeight: 1,
     flexShrink: 0,
     transition: "background .15s",
+  },
+  resetBtn: {
+    background: "#21262d",
+    border: "1px solid #30363d",
+    color: "#58a6ff",
+    fontSize: 12,
+    padding: "4px 7px",
+    cursor: "pointer",
+    borderRadius: 4,
+    lineHeight: 1,
+    flexShrink: 0,
+    transition: "background .15s",
+    title: "回到預設問題",
   },
   quickBtn: {
     background: "transparent",
@@ -532,6 +630,12 @@ const styles = {
     alignItems: "center",
     gap: 6,
     whiteSpace: "nowrap",
+  },
+  suggestLoading: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "12px 10px",
   },
   main: {
     flex: 1,
@@ -588,10 +692,7 @@ const styles = {
     marginTop: 4,
     paddingLeft: 4,
   },
-  elapsed: {
-    fontSize: 11,
-    color: "#8b949e",
-  },
+  elapsed: { fontSize: 11, color: "#8b949e" },
   copyBtn: {
     background: "none",
     border: "none",
