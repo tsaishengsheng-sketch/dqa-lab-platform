@@ -44,8 +44,8 @@ function renderMarkdown(rawText) {
           <span>{inlineMarkdown(line.slice(2))}</span>
         </div>,
       );
-    } else if (/^\d+\.\s/.test(line)) {
-      const match = line.match(/^(\d+)\.\s(.*)$/);
+    } else if (/^\d+[\.\、]\s*/.test(line)) {
+      const match = line.match(/^(\d+)[\.、]\s*(.*)$/);
       elements.push(
         <div key={i} style={styles.listItem}>
           <span style={styles.numBullet}>{match[1]}.</span>
@@ -213,7 +213,7 @@ export default function AIPage() {
       });
       if (!res.ok) throw new Error("建議產生失敗");
       const data = await res.json();
-      const raw = data.response || "";
+      const raw = data.reply || "";
       // 嘗試解析 JSON，失敗就回預設
       const match = raw.match(/\[[\s\S]*\]/);
       if (match) {
