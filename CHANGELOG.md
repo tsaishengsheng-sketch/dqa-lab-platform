@@ -34,6 +34,10 @@
 - **feat**: 左側欄收合 — 側欄頂部右上角 `◀ ▶` 按鈕，動畫滑入滑出（width 240 ↔ 36）
 - **feat**: 對話區獨立捲動 — `chatArea` 獨立 overflow，可自由往上捲動歷史，輸入框固定底部
 - **feat**: `App.jsx` 新增 `/ai` 路由與導覽列「AI 諮詢」連結；修正 `marginRight:a 16` typo
+- **fix**: 繁體前綴累積與重試無限迴圈 — 新增 `TC_PREFIX` 常數；`sendMessage` 拆分 `rawMsg`（存入 state）與 `apiMsg`（送 API），避免 history 疊加前綴；`retryInTraditional` 傳乾淨 `userMsg`，由 `sendMessage` 統一加前綴
+- **fix**: 串流輸出時強制捲動導致無法往上閱讀 — 新增 `chatAreaRef` + `userScrolledUpRef`，距底部 > 80px 時停止自動跟隨；使用者主動送出時呼叫 `scrollToBottomForce()` 重置
+- **fix**: 簡體偵測誤判 — 將 `SIMPLIFIED_CHARS` 字串比對改為 `SIMPLIFIED_ONLY Set`，只收錄繁體絕對不會出現的簡體專屬字，排除繁簡共用字（如温、湿）
+- **fix**: 追問建議欄出現簡體 — `generateSuggestions` 的 prompt 補上 `TC_PREFIX` 及「所有問題必須使用繁體中文」強制指令
 
 ---
 

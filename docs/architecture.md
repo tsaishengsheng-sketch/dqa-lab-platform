@@ -10,7 +10,7 @@
 - **✅ 儀表板 (Dashboard)**: 即時溫濕度大字顯示（每秒更新）、趨勢折線圖（雙 Y 軸，每 60 秒存一點，完整測試時長 + Brush 縮放，buffer 5760 點）、DeviceCard 步驟進度條與倒數計時器、六種狀態 badge、執行紀錄列表（30s 刷新）、GitHub dark 主題。
 - **✅ SOP 執行頁 (SOPPage)**: 40/60 雙欄佈局；三步驟法規選擇（per-device 獨立 state）；步驟依序追蹤（勾選同步後端）；SP+PV 波型曲線（雙 Y 軸、Brush 縮放）；執行資訊面板（Pgm/Step/Free Time/Cycle/Now Time/End Time）；上架安全確認；重啟後步驟恢復。
 - **✅ 異常看板 (ErrorLog)**: 統計卡片 + 完整紀錄列表，每 10 秒自動刷新。
-- **✅ AI 諮詢頁 (AIPage)**: 法規諮詢對話介面，串流逐字輸出、Markdown 渲染、左側欄快速提問（可收合）、中途停止並保留內容、複製回覆、回覆計時、localStorage 對話持久化。
+- **✅ AI 諮詢頁 (AIPage)**: 法規諮詢對話介面，串流逐字輸出、Markdown 渲染、左側欄快速提問（可收合）、中途停止並保留內容、複製回覆、回覆計時、localStorage 對話持久化、智慧捲動（使用者往上捲時不強制跟隨）、追問建議動態產生（繁體強制）、簡體精確偵測（SIMPLIFIED_ONLY Set）。
 - **規劃中**: 治具管理、設備管理、使用者中心。
 
 ---
@@ -92,7 +92,7 @@
 | 功能 | 狀態 | 說明 |
 |------|------|------|
 | 法規諮詢助手後端 | ✅ | `POST /api/ai/standards-query`（非串流）+ `standards-query-stream`（串流），Ollama qwen2.5:7b，多輪對話，繁體中文強制指令 |
-| 法規諮詢助手前端 | ✅ | `AIPage.jsx`，串流輸出、Markdown 渲染、快速提問、中途停止、複製、計時、localStorage 持久化、側欄收合 |
+| 法規諮詢助手前端 | ✅ | `AIPage.jsx`，串流輸出、Markdown 渲染、快速提問、中途停止、複製、計時、localStorage 持久化、側欄收合、智慧捲動、簡體精確偵測、追問建議繁體強制 |
 | 治具管理助手 | ⏳ | `/api/ai/fixture-recommend` |
 | 設備排程預估 | ⏳ | `/api/ai/schedule-estimate` |
 
@@ -124,7 +124,7 @@
 | 設備狀態持久化 | ✅ | DeviceState 表，重啟後自動恢復 |
 | 資料庫遷移 (Alembic) | ✅ | initial schema 基準版本已建立 |
 | AI 法規諮詢後端 | ✅ | Ollama qwen2.5:7b，串流 + 非串流，多輪對話，繁體中文強制 |
-| AI 法規諮詢前端 | ✅ | AIPage.jsx，串流、Markdown、快速提問、停止、複製、計時、localStorage |
+| AI 法規諮詢前端 | ✅ | AIPage.jsx，串流、Markdown、快速提問、停止、複製、計時、localStorage、智慧捲動、簡體精確偵測、追問建議繁體強制 |
 | AI 治具助手 | ⏳ | 規劃中 |
 | AI 排程預估 | ⏳ | 規劃中 |
 | 步驟軟體/現場確認 | ⏳ | Phase 3 前再做 |

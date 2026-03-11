@@ -18,7 +18,7 @@
 | 異常紀錄 | `backend/app/errors.py` | EMERGENCY 自動寫入 error_logs |
 | 歷史資料 API | `backend/app/main.py` | `GET /api/devices/{id}/history`，從 started_at 至今每分鐘聚合 |
 | AI 法規諮詢後端 | `backend/app/ai.py` | `POST /api/ai/standards-query`（非串流）、`POST /api/ai/standards-query-stream`（串流），Ollama qwen2.5:7b，多輪對話，強制繁體中文 |
-| AI 法規諮詢前端 | `client/src/AIPage.jsx` | 串流逐字輸出、Markdown 渲染、快速提問側欄（可收合）、中途停止保留內容、複製回覆、回覆計時、localStorage 持久化 |
+| AI 法規諮詢前端 | `client/src/AIPage.jsx` | 串流逐字輸出、Markdown 渲染、快速提問側欄（可收合）、中途停止保留內容、複製回覆、回覆計時、localStorage 持久化、智慧捲動（不強制跟隨） |
 | 儀表板 | `client/src/Dashboard.jsx` | 六狀態、趨勢圖雙 Y 軸可切換 5 台、步驟進度條、倒數計時器、執行紀錄列表（30s 刷新）|
 | SOP 執行頁 | `client/src/SOPPage.jsx` | 三步驟法規選擇（per-device）、步驟依序追蹤、SP+PV 波型曲線、執行資訊面板 |
 | 異常看板 | `client/src/Errorlog.jsx` | 統計卡片 + 完整紀錄列表，10s 自動刷新 |
@@ -27,11 +27,8 @@
 ### 下一步待開發（依優先度）
 
 1. **AI 治具管理助手**（`/api/ai/fixture-recommend`）— 後端 + 前端，構思中
-
 2. **AI 設備排程預估**（`/api/ai/schedule-estimate`）
-
 3. **步驟軟體確認 vs 現場確認**（Phase 3 前再做）
-
 4. **Phase 3**：多台設備架構、治具資料庫、認證系統、RS-485 真實通訊
 
 ### AI 模組技術規格
@@ -40,9 +37,19 @@
 - timeout：180 秒
 - 端點：`/api/ai/standards-query`（非串流）、`/api/ai/standards-query-stream`（串流，前端主要使用）
 - system prompt：4 條語言規則（禁簡體、禁 code block、限定推薦清單、強制繁體中文），內建 STANDARD_TREE 64 個測試條件摘要
-- user message 前綴：`[請用繁體中文回覆]`，防止長對話語言飄移
-- 多輪對話：history 陣列帶入
+- user message 前綴：`TC_PREFIX = "[請用繁體中文回覆，不可有任何簡體字] "`，只在送出 API 時附加，不存入 messages state
+- 多輪對話：history 陣列帶入，content 均為不含前綴的乾淨字串
 - 前端儲存：`localStorage`，key = `dqa_ai_chat_history`
+
+### AIPage.jsx 關鍵設計規範
+| 項目 | 規範 |
+|------|------|
+| `TC_PREFIX` | 只在 `sendMessage` 的 `apiMsg` 與 `generateSuggestions` 的 `prompt` 使用，絕不存入 `messages` state |
+| `messages[].content` | 永遠是使用者原始輸入或 AI 回覆，不含任何前綴 |
+| `retryInTraditional` | 從 messages 取乾淨 userMsg 直接傳給 `sendMessage`，不在此處拼接前綴 |
+| 自動捲動 | `userScrolledUpRef` 追蹤使用者是否往上捲；距底部 > 80px 停止強制跟隨；送出時呼叫 `scrollToBottomForce()` 重置 |
+| 簡體偵測 | `SIMPLIFIED_ONLY Set`，只含繁體絕對不出現的字；排除繁簡共用字（如温、湿） |
+| 追問建議 | `generateSuggestions` prompt 同樣加 `TC_PREFIX`，防止建議欄出現簡體 |
 
 ### 狀態機（6 種）
 ```
@@ -112,6 +119,7 @@ alembic upgrade head
 - **捲動架構**：`#root` flex column + `height: 100vh`；各頁面自己管理內部捲動。
 - **per-device state**：SOPPage 的法規選擇、步驟勾選、safetyChecked、chartHistory 都儲存在 `deviceStates[deviceId]`，切換設備不互相干擾。
 - **AIPage 串流架構**：`fetch` + `ReadableStream`；`streamTextRef`（ref）追蹤即時內容供 `stopStream()` 讀取，避免 closure 問題；`startTimeRef` 計算回覆耗時。
+- **AIPage 捲動架構**：`chatAreaRef` 綁定捲動容器；`userScrolledUpRef` 記錄使用者是否離開底部；智慧自動捲不干擾閱讀。
 
 ---
 
