@@ -10,6 +10,7 @@ from typing import Optional
 from .sop import router as sop_router, execution_router, DEVICE_IDS
 from .reports import router as reports_router
 from .errors import router as errors_router
+from .ai import router as ai_router
 from .models import SessionLocal, DeviceData, ErrorLog, DeviceState
 from .standards import get_ramp_rate, get_standard
 
@@ -75,6 +76,7 @@ app.include_router(sop_router, prefix="/api/sop", tags=["sop"])
 app.include_router(execution_router)
 app.include_router(reports_router)
 app.include_router(errors_router)
+app.include_router(ai_router)
 
 app.add_middleware(
     CORSMiddleware,
