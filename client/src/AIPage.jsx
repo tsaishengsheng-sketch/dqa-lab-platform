@@ -282,21 +282,48 @@ export default function AIPage() {
   const prevSuggestionsRef = useRef(null);
 
   const bottomRef = useRef(null);
+  const chatAreaRef = useRef(null); // 捲動容器 ref
   const inputRef = useRef(null);
   const textareaRef = useRef(null);
   const abortControllerRef = useRef(null);
   const streamTextRef = useRef("");
   const startTimeRef = useRef(null);
+  const userScrolledUpRef = useRef(false); // 使用者是否已往上捲
 
   // ── localStorage 同步（含容量保護）──────────────────────────
   useEffect(() => {
     saveMessages(messages);
   }, [messages]);
 
-  // ── 自動捲到底 ──────────────────────────────────────────────
+  // ── 監聽使用者手動捲動，記錄是否離開底部 ────────────────────
+  // 距底部 80px 內視為「在底部」，超過則標記使用者已往上捲
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = chatAreaRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      userScrolledUpRef.current = distFromBottom > 80;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // ── 智慧自動捲到底：使用者往上捲時不強制跟隨 ───────────────
+  // - 新訊息送出（messages 變化）且使用者在底部附近 → 捲到底
+  // - 串流輸出中（streamText 變化）且使用者在底部附近 → 捲到底
+  // - 使用者已往上捲 → 不干擾，讓他自由閱讀
+  useEffect(() => {
+    if (!userScrolledUpRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, streamText]);
+
+  // ── 送出新訊息時強制捲到底（使用者主動送出，重置捲動狀態）──
+  // 由 sendMessage 呼叫，確保每次送出都能看到最新回覆起點
+  const scrollToBottomForce = useCallback(() => {
+    userScrolledUpRef.current = false;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
 
   // ── textarea auto-resize ─────────────────────────────────────
   const handleInputChange = (e) => {
@@ -389,6 +416,8 @@ export default function AIPage() {
       // 存入 messages 的 user content 永遠是乾淨的 rawMsg
       const newMessages = [...messages, { role: "user", content: rawMsg }];
       setMessages(newMessages);
+      // 使用者主動送出，重置捲動狀態確保能看到最新回覆起點
+      scrollToBottomForce();
       setLoading(true);
       setSuggestLoading(true);
       setSuggestions(null);
@@ -462,7 +491,7 @@ export default function AIPage() {
         }
       }
     },
-    [messages, input, loading, generateSuggestions],
+    [messages, input, loading, generateSuggestions, scrollToBottomForce],
   );
 
   // ── 簡體重問 ─────────────────────────────────────────────────
@@ -655,7 +684,7 @@ export default function AIPage() {
 
       {/* ── 右側主區 ── */}
       <div style={styles.main}>
-        <div style={styles.chatArea}>
+        <div ref={chatAreaRef} style={styles.chatArea}>
           {messages.length === 0 && !loading && (
             <div style={styles.emptyHint}>
               <div style={styles.emptyIcon}>🔬</div>
