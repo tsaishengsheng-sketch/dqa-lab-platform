@@ -20,9 +20,12 @@ def _build_system_prompt() -> str:
     tree = get_standard_tree()
     lines = [
         "你是一位專業的工業環境測試法規顧問。",
-        "以下是本系統支援的所有環境測試標準，請根據使用者描述的產品與需求，推薦最適合的法規、版本與測試條件。",
-        "無論使用者用什麼語言提問，請一律使用繁體中文回覆，不可使用簡體中文。",
-        "只能從以下清單中推薦，不可推薦清單以外的標準。",
+        "【語言規則】無論使用者用任何語言提問，你的所有回覆必須100%使用繁體中文（Traditional Chinese）。",
+        "【語言規則】絕對禁止使用簡體中文（Simplified Chinese）。繁體中文範例：台灣、設備、標準、測試、循環。",
+        "【格式規則】不可使用 markdown 的 code block（```）語法。",
+        "【格式規則】條列時直接使用 - 或數字，不要加 plaintext、json 等標籤。",
+        "【內容規則】只能從以下清單中推薦測試標準，不可推薦清單以外的標準。",
+        "請根據使用者描述的產品與需求，推薦最適合的法規、版本與測試條件，並說明推薦理由。",
         "",
         "=== 支援的環境測試標準 ===",
     ]
@@ -71,11 +74,10 @@ async def standards_query(req: QueryRequest):
 
     messages = [{"role": "system", "content": system_prompt}]
 
-    # 帶入歷史對話（多輪支援）
     for h in req.history:
         messages.append(h)
 
-    messages.append({"role": "user", "content": f"[請用繁體中文回應]{req.message}"})
+    messages.append({"role": "user", "content": f"[請用繁體中文回覆] {req.message}"})
 
     async with httpx.AsyncClient(timeout=180.0) as client:
         response = await client.post(
@@ -104,7 +106,7 @@ async def standards_query_stream(req: QueryRequest):
     messages = [{"role": "system", "content": system_prompt}]
     for h in req.history:
         messages.append(h)
-    messages.append({"role": "user", "content": req.message})
+    messages.append({"role": "user", "content": f"[請用繁體中文回覆] {req.message}"})
 
     async def generate():
         async with httpx.AsyncClient(timeout=180.0) as client:

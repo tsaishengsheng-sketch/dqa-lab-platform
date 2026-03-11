@@ -1,16 +1,24 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 const API_BASE = "http://localhost:8000";
+const STORAGE_KEY = "dqa_ai_chat_history";
+
+// ── 前處理：清除 code block 標籤 ────────────────────────────
+function cleanText(text) {
+  return text
+    .replace(/```[\w]*\n?/g, "")
+    .replace(/```/g, "")
+    .trim();
+}
 
 // ── Markdown 簡易渲染器 ──────────────────────────────────────
-function renderMarkdown(text) {
+function renderMarkdown(rawText) {
+  const text = cleanText(rawText);
   const lines = text.split("\n");
   const elements = [];
   let i = 0;
-
   while (i < lines.length) {
     const line = lines[i];
-
     if (line.startsWith("### ")) {
       elements.push(
         <h3 key={i} style={styles.h3}>
@@ -61,9 +69,9 @@ function renderMarkdown(text) {
 function inlineMarkdown(text) {
   const parts = [];
   const regex = /(\*\*(.+?)\*\*|`(.+?)`)/g;
-  let last = 0;
-  let match;
-  let idx = 0;
+  let last = 0,
+    match,
+    idx = 0;
   while ((match = regex.exec(text)) !== null) {
     if (match.index > last) parts.push(text.slice(last, match.index));
     if (match[2])
@@ -94,78 +102,190 @@ const QUICK_QUESTIONS = [
   "KEMA KEUR 適用於什麼類型的設備？",
 ];
 
+// ── 單則訊息元件 ─────────────────────────────────────────────
+function MessageBubble({ m }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(cleanText(m.content)).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div
+      style={m.role === "user" ? styles.userBubbleWrap : styles.aiBubbleWrap}
+    >
+      <div
+        style={{
+          maxWidth: m.role === "user" ? "70%" : "82%",
+          width: "fit-content",
+        }}
+      >
+        <div style={m.role === "user" ? styles.userBubble : styles.aiBubble}>
+          {m.role === "assistant" ? (
+            renderMarkdown(m.content)
+          ) : (
+            <p style={{ margin: 0 }}>{m.content}</p>
+          )}
+        </div>
+        {m.role === "assistant" && (
+          <div style={styles.bubbleMeta}>
+            {m.elapsed != null && (
+              <span style={styles.elapsed}>⏱ {m.elapsed}s</span>
+            )}
+            {m.stopped && (
+              <span style={{ ...styles.elapsed, color: "#f85149" }}>
+                已停止
+              </span>
+            )}
+            <button
+              style={{
+                ...styles.copyBtn,
+                color: copied ? "#3fb950" : "#8b949e",
+              }}
+              onClick={handleCopy}
+              title="複製回覆"
+            >
+              {copied ? "✓ 已複製" : "複製"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── 主元件 ───────────────────────────────────────────────────
 export default function AIPage() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streamText, setStreamText] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const abortControllerRef = useRef(null);
+  const streamTextRef = useRef("");
+  const startTimeRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    } catch {}
+  }, [messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamText]);
 
-  const sendMessage = async (text) => {
-    const msg = text || input.trim();
-    if (!msg || loading) return;
-    setInput("");
-
-    const newMessages = [...messages, { role: "user", content: msg }];
-    setMessages(newMessages);
-    setLoading(true);
-    setStreamText("");
-
-    const history = newMessages.slice(0, -1).map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
-
-    try {
-      const res = await fetch(`${API_BASE}/api/ai/standards-query-stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, history }),
-      });
-
-      if (!res.ok) throw new Error("串流請求失敗");
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let fullText = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        fullText += chunk;
-        setStreamText(fullText);
-      }
-
-      // 串流完成，加入訊息列表
+  const stopStream = () => {
+    const currentText = streamTextRef.current;
+    const elapsed = startTimeRef.current
+      ? ((Date.now() - startTimeRef.current) / 1000).toFixed(1)
+      : null;
+    if (currentText.trim()) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: fullText },
+        { role: "assistant", content: currentText, elapsed, stopped: true },
       ]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "⚠️ 連線失敗，請確認後端與 Ollama 是否正常運行。",
-        },
-      ]);
-    } finally {
-      setLoading(false);
-      setStreamText("");
-      inputRef.current?.focus();
     }
+    setStreamText("");
+    streamTextRef.current = "";
+    setLoading(false);
+    abortControllerRef.current?.abort();
+    inputRef.current?.focus();
   };
+
+  const sendMessage = useCallback(
+    async (text) => {
+      const msg = text || input.trim();
+      if (!msg || loading) return;
+      setInput("");
+
+      const newMessages = [...messages, { role: "user", content: msg }];
+      setMessages(newMessages);
+      setLoading(true);
+      setStreamText("");
+      streamTextRef.current = "";
+      startTimeRef.current = Date.now();
+
+      const history = newMessages.slice(0, -1).map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/ai/standards-query-stream`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: msg, history }),
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error("串流請求失敗");
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          fullText += chunk;
+          streamTextRef.current = fullText;
+          setStreamText(fullText);
+        }
+
+        if (!controller.signal.aborted && fullText.trim()) {
+          const elapsed = ((Date.now() - startTimeRef.current) / 1000).toFixed(
+            1,
+          );
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: fullText, elapsed },
+          ]);
+        }
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: "⚠️ 連線失敗，請確認後端與 Ollama 是否正常運行。",
+            },
+          ]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          setStreamText("");
+          streamTextRef.current = "";
+          abortControllerRef.current = null;
+          inputRef.current?.focus();
+        }
+      }
+    },
+    [messages, input, loading],
+  );
 
   const clearChat = () => {
     setMessages([]);
     setInput("");
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
     inputRef.current?.focus();
   };
 
@@ -178,41 +298,66 @@ export default function AIPage() {
 
   return (
     <div style={styles.page}>
-      {/* 左側欄：快速提問 */}
-      <aside style={styles.sidebar}>
-        <div style={styles.sidebarTitle}>⚡ 快速提問</div>
-        {QUICK_QUESTIONS.map((q, i) => (
+      {/* ── 左側欄 ── */}
+      <aside
+        style={{
+          ...styles.sidebar,
+          width: sidebarOpen ? 240 : 36,
+          minWidth: sidebarOpen ? 240 : 36,
+        }}
+      >
+        {/* 頂部：標題 + 收合按鈕同一行 */}
+        <div style={styles.sidebarHeader}>
+          {sidebarOpen && <span style={styles.sidebarTitle}>⚡ 快速提問</span>}
           <button
-            key={i}
-            style={styles.quickBtn}
-            onClick={() => sendMessage(q)}
-            disabled={loading}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#21262d")}
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "transparent")
-            }
+            style={styles.toggleBtn}
+            onClick={() => setSidebarOpen((v) => !v)}
+            title={sidebarOpen ? "收合側欄" : "展開側欄"}
           >
-            {q}
-          </button>
-        ))}
-        <div style={{ marginTop: "auto", paddingTop: 16 }}>
-          <button
-            style={styles.clearBtn}
-            onClick={clearChat}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#3d1c1c")}
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "transparent")
-            }
-          >
-            🗑 清除對話
+            {sidebarOpen ? "◀" : "▶"}
           </button>
         </div>
-        <div style={styles.modelBadge}>
-          <span style={{ color: "#3fb950" }}>●</span> qwen2.5:7b（本機）
-        </div>
+
+        {sidebarOpen && (
+          <>
+            {QUICK_QUESTIONS.map((q, i) => (
+              <button
+                key={i}
+                style={styles.quickBtn}
+                onClick={() => sendMessage(q)}
+                disabled={loading}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "#21262d")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
+              >
+                {q}
+              </button>
+            ))}
+            <div style={{ marginTop: "auto", paddingTop: 16 }}>
+              <button
+                style={styles.clearBtn}
+                onClick={clearChat}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "#3d1c1c")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
+              >
+                🗑 清除對話
+              </button>
+            </div>
+            <div style={styles.modelBadge}>
+              <span style={{ color: "#3fb950" }}>●</span> qwen2.5:7b（本機）
+            </div>
+          </>
+        )}
       </aside>
 
-      {/* 右側主區：對話 */}
+      {/* ── 右側主區 ── */}
       <div style={styles.main}>
         <div style={styles.chatArea}>
           {messages.length === 0 && !loading && (
@@ -227,25 +372,9 @@ export default function AIPage() {
           )}
 
           {messages.map((m, i) => (
-            <div
-              key={i}
-              style={
-                m.role === "user" ? styles.userBubbleWrap : styles.aiBubbleWrap
-              }
-            >
-              <div
-                style={m.role === "user" ? styles.userBubble : styles.aiBubble}
-              >
-                {m.role === "assistant" ? (
-                  renderMarkdown(m.content)
-                ) : (
-                  <p style={{ margin: 0 }}>{m.content}</p>
-                )}
-              </div>
-            </div>
+            <MessageBubble key={i} m={m} />
           ))}
 
-          {/* 串流中即時顯示 */}
           {loading && streamText && (
             <div style={styles.aiBubbleWrap}>
               <div style={{ ...styles.aiBubble, borderColor: "#58a6ff" }}>
@@ -255,7 +384,6 @@ export default function AIPage() {
             </div>
           )}
 
-          {/* 等待開始串流時顯示點點 */}
           {loading && !streamText && (
             <div style={styles.aiBubbleWrap}>
               <div style={styles.aiBubble}>
@@ -271,7 +399,7 @@ export default function AIPage() {
           <div ref={bottomRef} />
         </div>
 
-        {/* 輸入區 */}
+        {/* ── 輸入區 ── */}
         <div style={styles.inputArea}>
           <textarea
             ref={inputRef}
@@ -283,29 +411,38 @@ export default function AIPage() {
             rows={3}
             disabled={loading}
           />
-          <button
-            style={{
-              ...styles.sendBtn,
-              opacity: loading || !input.trim() ? 0.4 : 1,
-              cursor: loading || !input.trim() ? "not-allowed" : "pointer",
-            }}
-            onClick={() => sendMessage()}
-            disabled={loading || !input.trim()}
-          >
-            {loading ? "思考中..." : "送出"}
-          </button>
+          {loading ? (
+            <button
+              style={styles.stopBtn}
+              onClick={stopStream}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "#3d1c1c")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+            >
+              ⏹ 停止
+            </button>
+          ) : (
+            <button
+              style={{
+                ...styles.sendBtn,
+                opacity: !input.trim() ? 0.4 : 1,
+                cursor: !input.trim() ? "not-allowed" : "pointer",
+              }}
+              onClick={() => sendMessage()}
+              disabled={!input.trim()}
+            >
+              送出
+            </button>
+          )}
         </div>
       </div>
 
       <style>{`
-        @keyframes blink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0; }
-        }
-        @keyframes dotBounce {
-          0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-          40% { transform: translateY(-6px); opacity: 1; }
-        }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+        @keyframes dotBounce { 0%,80%,100%{transform:translateY(0);opacity:.4} 40%{transform:translateY(-6px);opacity:1} }
       `}</style>
     </div>
   );
@@ -322,15 +459,23 @@ const styles = {
     overflow: "hidden",
   },
   sidebar: {
-    width: 240,
-    minWidth: 240,
     backgroundColor: "#161b22",
     borderRight: "1px solid #30363d",
-    padding: "20px 12px",
+    padding: "12px 12px 20px",
     display: "flex",
     flexDirection: "column",
     gap: 6,
     overflowY: "auto",
+    overflowX: "hidden",
+    transition: "width .2s ease, min-width .2s ease",
+    flexShrink: 0,
+  },
+  sidebarHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+    minHeight: 28,
   },
   sidebarTitle: {
     fontSize: 11,
@@ -338,8 +483,20 @@ const styles = {
     color: "#8b949e",
     letterSpacing: "0.08em",
     textTransform: "uppercase",
-    marginBottom: 8,
-    paddingLeft: 8,
+    whiteSpace: "nowrap",
+    paddingLeft: 4,
+  },
+  toggleBtn: {
+    background: "#21262d",
+    border: "1px solid #30363d",
+    color: "#8b949e",
+    fontSize: 10,
+    padding: "4px 7px",
+    cursor: "pointer",
+    borderRadius: 4,
+    lineHeight: 1,
+    flexShrink: 0,
+    transition: "background .15s",
   },
   quickBtn: {
     background: "transparent",
@@ -364,15 +521,17 @@ const styles = {
     cursor: "pointer",
     width: "100%",
     transition: "all .15s",
+    whiteSpace: "nowrap",
   },
   modelBadge: {
     fontSize: 11,
     color: "#8b949e",
     marginTop: 12,
-    paddingLeft: 8,
+    paddingLeft: 4,
     display: "flex",
     alignItems: "center",
     gap: 6,
+    whiteSpace: "nowrap",
   },
   main: {
     flex: 1,
@@ -383,6 +542,7 @@ const styles = {
   chatArea: {
     flex: 1,
     overflowY: "auto",
+    overflowX: "hidden",
     padding: "24px 32px",
     display: "flex",
     flexDirection: "column",
@@ -409,7 +569,6 @@ const styles = {
     color: "#fff",
     borderRadius: "16px 16px 4px 16px",
     padding: "10px 16px",
-    maxWidth: "70%",
     fontSize: 14,
     lineHeight: 1.6,
   },
@@ -418,10 +577,29 @@ const styles = {
     border: "1px solid #30363d",
     borderRadius: "16px 16px 16px 4px",
     padding: "12px 18px",
-    maxWidth: "80%",
     fontSize: 14,
     lineHeight: 1.7,
     transition: "border-color .3s",
+  },
+  bubbleMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 4,
+    paddingLeft: 4,
+  },
+  elapsed: {
+    fontSize: 11,
+    color: "#8b949e",
+  },
+  copyBtn: {
+    background: "none",
+    border: "none",
+    fontSize: 11,
+    cursor: "pointer",
+    padding: "2px 6px",
+    borderRadius: 4,
+    transition: "color .15s",
   },
   cursor: {
     display: "inline-block",
@@ -475,6 +653,19 @@ const styles = {
     cursor: "pointer",
     whiteSpace: "nowrap",
     transition: "opacity .15s",
+    height: 42,
+  },
+  stopBtn: {
+    background: "transparent",
+    border: "1px solid #f85149",
+    color: "#f85149",
+    fontWeight: 600,
+    fontSize: 14,
+    padding: "10px 20px",
+    borderRadius: 8,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    transition: "all .15s",
     height: 42,
   },
   h1: { fontSize: 18, fontWeight: 700, color: "#cdd9e5", margin: "8px 0 4px" },
