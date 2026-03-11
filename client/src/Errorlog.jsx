@@ -25,18 +25,23 @@ const card = {
 const ErrorLog = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const prevCountRef = useRef(0);
 
-  // 載入後每 10 秒自動刷新
+  // 異常紀錄：改為每 60 秒刷新（原本 10 秒）
+  // 異常事件由後端 EMERGENCY 動作寫入，前端只需定時同步，60 秒已足夠
   useEffect(() => {
     const fetchLogs = () => {
       axios
         .get(`${API}/api/errors/`)
-        .then((r) => setLogs(r.data))
+        .then((r) => {
+          setLogs(r.data);
+          prevCountRef.current = r.data.length;
+        })
         .catch((err) => console.error("[ErrorLog] fetch:", err))
         .finally(() => setLoading(false));
     };
     fetchLogs();
-    const t = setInterval(fetchLogs, 10000);
+    const t = setInterval(fetchLogs, 60000);
     return () => clearInterval(t);
   }, []);
 
@@ -45,7 +50,6 @@ const ErrorLog = () => {
       style={{
         backgroundColor: "#0d1117",
         color: "#cdd9e5",
-        // 修正：height + overflowY 取代 minHeight，避免撐破 App.jsx 的 overflow:hidden
         height: "100%",
         overflowY: "auto",
         padding: "24px 28px",
