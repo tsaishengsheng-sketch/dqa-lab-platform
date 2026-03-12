@@ -6,6 +6,18 @@
 
 ## 2026-03-12
 
+**AI 諮詢免責聲明雙層保護**
+
+前端
+
+- **feat**: `AIPage.jsx` 新增 `DISCLAIMER` 常數，每則 AI 回覆泡泡下方固定顯示免責聲明，左側灰色細邊線區隔，字色偏暗不搶眼但清楚可見
+- **feat**: `AIPage.jsx` 空白頁面（尚無對話時）同樣顯示免責聲明，進入頁面即可看見
+- **fix**: `AIPage.jsx` 修正 `disclaimer` 樣式重複 `paddingLeft` key 導致的 Vite 警告
+
+後端
+
+- **feat**: `ai.py` system prompt 新增兩條免責規則：每次回覆結尾強制附上固定免責聲明；推薦法規時必須標注正式版本號（如 `IEC 60068-2-1:2007`），提醒使用者回查原文
+
 **前端效能優化 & 濕度顯示邏輯修正**
 
 前端
@@ -59,7 +71,7 @@
 - **fix**: 串流輸出時強制捲動導致無法往上閱讀 — 新增 `chatAreaRef` + `userScrolledUpRef`，距底部 > 80px 時停止自動跟隨；使用者主動送出時呼叫 `scrollToBottomForce()` 重置
 - **fix**: 簡體偵測誤判 — 將 `SIMPLIFIED_CHARS` 字串比對改為 `SIMPLIFIED_ONLY Set`，只收錄繁體絕對不會出現的簡體專屬字，排除繁簡共用字（如温、湿）
 - **fix**: 追問建議欄出現簡體 — `generateSuggestions` 的 prompt 補上 `TC_PREFIX` 及「所有問題必須使用繁體中文」強制指令
-- **perf**: `Dashboard.jsx` 執行紀錄列表刷新頻率 30s → 60s；`Errorlog.jsx` 異常看板刷新頻率 10s → 60s（異常事件由後端 EMERGENCY 動作寫入，前端定時同步 60s 已足夠）
+- **perf**: `Dashboard.jsx` 執行紀錄列表刷新頻率 30s → 60s；`Errorlog.jsx` 異常看板刷新頻率 10s → 60s
 
 ---
 

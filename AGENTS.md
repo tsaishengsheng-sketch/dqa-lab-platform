@@ -17,8 +17,8 @@
 | CSV 報告 | `backend/app/reports.py` | ISO 17025 格式，big5，PASS/FAIL 工程師人工判定 |
 | 異常紀錄 | `backend/app/errors.py` | EMERGENCY 自動寫入 error_logs |
 | 歷史資料 API | `backend/app/main.py` | `GET /api/devices/{id}/history`，從 started_at 至今每分鐘聚合 |
-| AI 法規諮詢後端 | `backend/app/ai.py` | `POST /api/ai/standards-query`（非串流）、`POST /api/ai/standards-query-stream`（串流），Ollama qwen2.5:7b，多輪對話，強制繁體中文 |
-| AI 法規諮詢前端 | `client/src/AIPage.jsx` | 串流逐字輸出、Markdown 渲染、快速提問側欄（可收合）、中途停止保留內容、複製回覆、回覆計時、localStorage 持久化、智慧捲動（不強制跟隨）、追問建議動態產生 |
+| AI 法規諮詢後端 | `backend/app/ai.py` | 串流 + 非串流，Ollama qwen2.5:7b，多輪對話，強制繁體中文；system prompt 含兩條免責規則（版本號標注 + 回覆結尾聲明） |
+| AI 法規諮詢前端 | `client/src/AIPage.jsx` | 串流逐字輸出、Markdown 渲染、快速提問側欄（可收合）、中途停止保留內容、複製回覆、回覆計時、localStorage 持久化、智慧捲動、追問建議動態產生、**雙層免責聲明**（前端固定標籤 + AI 回覆內聲明） |
 | 儀表板 | `client/src/Dashboard.jsx` | 六狀態、趨勢圖雙 Y 軸可切換 5 台、步驟進度條、倒數計時器、執行紀錄列表（60s 刷新）、低溫 < 0°C 隱藏濕度、趨勢圖低溫段 humidity 存 null |
 | SOP 執行頁 | `client/src/SOPPage.jsx` | 三步驟法規選擇（per-device）、treeLoaded skeleton、步驟依序追蹤、generateSP 低溫 < 0°C 濕度為 null、SP+PV 波型曲線、執行資訊面板 |
 | 異常看板 | `client/src/Errorlog.jsx` | 統計卡片 + 完整紀錄列表，60s 自動刷新 |
@@ -27,17 +27,18 @@
 
 ### 下一步待開發（依優先度）
 
-1. **AI 治具管理助手**（`/api/ai/fixture-recommend`）— 後端 + 前端，構思中
-2. **AI 設備排程預估**（`/api/ai/schedule-estimate`）
-3. **步驟軟體確認 vs 現場確認**（Phase 3 前再做）
-4. **Phase 3**：多台設備架構、治具資料庫、認證系統、RS-485 真實通訊
+1. **法規正確性審查**（進行中）— 對照原始法規文件逐條驗證 STANDARD_TREE 的 64 個測試條件，審查順序：IEC 60068 → EN 50155 → IEC 61850-3 → DNV → KEMA → NMEA。審查項目：溫度、停留時間、濕度、循環數、升降溫速率。發現差異標出並整理修正清單，最終更新 `standards.py`。
+2. **AI 治具管理助手**（`/api/ai/fixture-recommend`）— 後端 + 前端，構思中
+3. **AI 設備排程預估**（`/api/ai/schedule-estimate`）
+4. **步驟軟體確認 vs 現場確認**（Phase 3 前再做）
+5. **Phase 3**：多台設備架構、治具資料庫、認證系統、RS-485 真實通訊
 
 ### AI 模組技術規格
 - 模型：`qwen2.5:7b`（本機 Ollama，`http://localhost:11434`）
 - 備用：`qwen2.5:14b`（需關閉其他應用釋放記憶體）
 - timeout：180 秒
 - 端點：`/api/ai/standards-query`（非串流）、`/api/ai/standards-query-stream`（串流，前端主要使用）
-- system prompt：4 條語言規則（禁簡體、禁 code block、限定推薦清單、強制繁體中文），內建 STANDARD_TREE 64 個測試條件摘要
+- system prompt：6 條規則（禁簡體、禁 code block、限定推薦清單、強制繁體中文、**回覆結尾免責聲明**、**推薦法規時標注正式版本號**），內建 STANDARD_TREE 64 個測試條件摘要
 - user message 前綴：`TC_PREFIX = "[請用繁體中文回覆，不可有任何簡體字] "`，只在送出 API 時附加，不存入 messages state
 - 多輪對話：history 陣列帶入，content 均為不含前綴的乾淨字串
 - 前端儲存：`localStorage`，key = `dqa_ai_chat_history`
@@ -51,6 +52,7 @@
 | 自動捲動 | `userScrolledUpRef` 追蹤使用者是否往上捲；距底部 > 80px 停止強制跟隨；送出時呼叫 `scrollToBottomForce()` 重置 |
 | 簡體偵測 | `SIMPLIFIED_ONLY Set`，只含繁體絕對不出現的字；排除繁簡共用字（如温、湿） |
 | 追問建議 | `generateSuggestions` prompt 同樣加 `TC_PREFIX`，防止建議欄出現簡體 |
+| 免責聲明 | `DISCLAIMER` 常數統一管理文字；每則 AI 回覆泡泡下方固定顯示，空白頁面亦顯示 |
 
 ### SOPPage.jsx 關鍵設計規範
 | 項目 | 規範 |
@@ -161,6 +163,7 @@ alembic upgrade head
 - **AIPage 串流架構**：`fetch` + `ReadableStream`；`streamTextRef`（ref）追蹤即時內容供 `stopStream()` 讀取，避免 closure 問題；`startTimeRef` 計算回覆耗時。
 - **AIPage 捲動架構**：`chatAreaRef` 綁定捲動容器；`userScrolledUpRef` 記錄使用者是否離開底部；智慧自動捲不干擾閱讀。
 - **濕度顯示規範**：模擬環境下低溫段（< 0°C）感測器回傳值無意義，前端一律隱藏或存 null；待 Phase 3 接真實硬體後改依 `humidity_control` 欄位判斷。
+- **免責聲明規範**：AI 諮詢頁面採雙層保護。前端層：`DISCLAIMER` 常數，每則 AI 回覆固定顯示，不可移除。後端層：system prompt 強制 AI 標注法規版本號並附聲明。目的是確保使用者不以 AI 建議直接作為測試依據。
 
 ---
 

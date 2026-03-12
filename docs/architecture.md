@@ -10,7 +10,7 @@
 - **✅ 儀表板 (Dashboard)**: 即時溫濕度大字顯示（每秒更新）、趨勢折線圖（雙 Y 軸，每 60 秒存一點，完整測試時長 + Brush 縮放，buffer 5760 點）、DeviceCard 步驟進度條與倒數計時器、六種狀態 badge、執行紀錄列表（60s 刷新）、GitHub dark 主題。低溫（< 0°C）時自動隱藏濕度顯示並將趨勢圖該段 humidity 存為 null（`connectNulls={false}` 自動斷線）。
 - **✅ SOP 執行頁 (SOPPage)**: 40/60 雙欄佈局；三步驟法規選擇（per-device 獨立 state）；步驟依序追蹤（勾選同步後端）；SP+PV 波型曲線（雙 Y 軸、Brush 縮放）；執行資訊面板（Pgm/Step/Free Time/Cycle/Now Time/End Time）；上架安全確認；重啟後步驟恢復。`treeLoaded` state 管理標準樹載入，未就緒前顯示 skeleton。`generateSP()` 溫度 < 0°C 時 `sp_humi = null`，低溫段圖表濕度線自動斷開。
 - **✅ 異常看板 (ErrorLog)**: 統計卡片 + 完整紀錄列表，每 60 秒自動刷新。
-- **✅ AI 諮詢頁 (AIPage)**: 法規諮詢對話介面，串流逐字輸出、Markdown 渲染、左側欄快速提問（可收合）、中途停止並保留內容、複製回覆、回覆計時、localStorage 對話持久化、智慧捲動（使用者往上捲時不強制跟隨）、追問建議動態產生（繁體強制）、簡體精確偵測（SIMPLIFIED_ONLY Set）。
+- **✅ AI 諮詢頁 (AIPage)**: 法規諮詢對話介面，串流逐字輸出、Markdown 渲染、左側欄快速提問（可收合）、中途停止並保留內容、複製回覆、回覆計時、localStorage 對話持久化、智慧捲動（使用者往上捲時不強制跟隨）、追問建議動態產生（繁體強制）、簡體精確偵測（SIMPLIFIED_ONLY Set）。**雙層免責聲明**：前端每則回覆固定顯示警語（`DISCLAIMER` 常數）；空白頁面亦顯示；ai.py system prompt 強制 AI 在回覆內標注法規版本號並附上免責聲明。
 - **規劃中**: 治具管理、設備管理、使用者中心。
 
 ---
@@ -62,6 +62,19 @@
 
 > `GET /api/sop/standards/tree` 回傳時已移除 `steps` 欄位（108kB → ~12kB），前端選取法規時不再傳輸步驟資料，啟動 SOP 時才取完整定義。
 
+**法規正確性審查計畫（進行中）**
+
+STANDARD_TREE 內建參數均為人工整理，需逐條對照原始法規文件驗證。審查順序與範圍：
+
+1. IEC 60068（12 條）— 冷測 Ab/Ad、乾熱 Ba/Bb、溫度循環/熱衝擊 Na/Nb、濕熱循環 Db
+2. EN 50155（19 條）— OT1~OT6、ST1、隧道溫變、濕熱循環
+3. IEC 61850-3（9 條）— Class C1/C2/C3
+4. DNV（14 條）— CG-0339:2019 / Std.Cert.2.4 Class A/B/C/D
+5. KEMA（4 條）— KEMA KEUR
+6. NMEA（7 條）— IEC 61162-1 / 61162-3
+
+審查項目：溫度、停留時間、濕度、循環數、升降溫速率是否符合原文。發現差異時直接標出並說明，最終整理修正清單更新 `standards.py`。
+
 ---
 
 ## 📁 業務服務層 & 資料模型
@@ -94,8 +107,8 @@
 
 | 功能 | 狀態 | 說明 |
 |------|------|------|
-| 法規諮詢助手後端 | ✅ | `POST /api/ai/standards-query`（非串流）+ `standards-query-stream`（串流），Ollama qwen2.5:7b，多輪對話，繁體中文強制指令 |
-| 法規諮詢助手前端 | ✅ | `AIPage.jsx`，串流輸出、Markdown 渲染、快速提問、中途停止、複製、計時、localStorage 持久化、側欄收合、智慧捲動、簡體精確偵測、追問建議繁體強制 |
+| 法規諮詢助手後端 | ✅ | `POST /api/ai/standards-query`（非串流）+ `standards-query-stream`（串流），Ollama qwen2.5:7b，多輪對話，繁體中文強制，免責規則（版本號標注 + 回覆結尾聲明） |
+| 法規諮詢助手前端 | ✅ | `AIPage.jsx`，串流輸出、Markdown 渲染、快速提問、中途停止、複製、計時、localStorage 持久化、側欄收合、智慧捲動、簡體精確偵測、追問建議繁體強制、雙層免責聲明 |
 | 治具管理助手 | ⏳ | `/api/ai/fixture-recommend` |
 | 設備排程預估 | ⏳ | `/api/ai/schedule-estimate` |
 
@@ -127,8 +140,9 @@
 | 設備狀態持久化 | ✅ | DeviceState 表，重啟後自動恢復 |
 | 資料庫遷移 (Alembic) | ✅ | initial schema 基準版本已建立 |
 | Standards Tree 效能 | ✅ | 移除 steps 欄位，108kB → ~12kB；total_steps 存 cache 避免重複 parse |
-| AI 法規諮詢後端 | ✅ | Ollama qwen2.5:7b，串流 + 非串流，多輪對話，繁體中文強制 |
-| AI 法規諮詢前端 | ✅ | AIPage.jsx，串流、Markdown、快速提問、停止、複製、計時、localStorage、智慧捲動、簡體精確偵測、追問建議繁體強制 |
+| AI 法規諮詢後端 | ✅ | Ollama qwen2.5:7b，串流 + 非串流，多輪對話，繁體中文強制，免責規則 |
+| AI 法規諮詢前端 | ✅ | AIPage.jsx，串流、Markdown、快速提問、停止、複製、計時、localStorage、智慧捲動、簡體精確偵測、追問建議繁體強制、雙層免責聲明 |
+| 法規正確性審查 | ⏳ | 進行中，6 法規 64 條逐條對照原始文件 |
 | AI 治具助手 | ⏳ | 規劃中 |
 | AI 排程預估 | ⏳ | 規劃中 |
 | 步驟軟體/現場確認 | ⏳ | Phase 3 前再做 |
