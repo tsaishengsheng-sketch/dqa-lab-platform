@@ -4,7 +4,7 @@
 
 ---
 
-## 當前狀態快照（2026-03-11）
+## 當前狀態快照（2026-03-12）
 
 ### 已完成模組
 
@@ -13,15 +13,16 @@
 | 物理模擬引擎 | `backend/app/main.py` | 升降溫斜率、每 10 秒寫 DB、ISO 17025 永久保存、每台設備獨立 DB session |
 | 設備狀態持久化 | `backend/app/main.py` + `models.py` | DeviceState 表、updated_at 自動更新、重啟後自動恢復 RUNNING 狀態與步驟清單 |
 | 環境測試標準 | `backend/app/standards.py` | 三層 STANDARD_TREE，6 法規 64 條件 |
-| SOP 路由 + 執行紀錄 | `backend/app/sop.py` | 標準樹展開、三步驟選擇 API、執行紀錄儲存讀取 |
+| SOP 路由 + 執行紀錄 | `backend/app/sop.py` | 標準樹展開、三步驟選擇 API、執行紀錄儲存讀取；`/api/sop/standards/tree` 不含 steps 欄位（108kB → ~12kB） |
 | CSV 報告 | `backend/app/reports.py` | ISO 17025 格式，big5，PASS/FAIL 工程師人工判定 |
 | 異常紀錄 | `backend/app/errors.py` | EMERGENCY 自動寫入 error_logs |
 | 歷史資料 API | `backend/app/main.py` | `GET /api/devices/{id}/history`，從 started_at 至今每分鐘聚合 |
 | AI 法規諮詢後端 | `backend/app/ai.py` | `POST /api/ai/standards-query`（非串流）、`POST /api/ai/standards-query-stream`（串流），Ollama qwen2.5:7b，多輪對話，強制繁體中文 |
 | AI 法規諮詢前端 | `client/src/AIPage.jsx` | 串流逐字輸出、Markdown 渲染、快速提問側欄（可收合）、中途停止保留內容、複製回覆、回覆計時、localStorage 持久化、智慧捲動（不強制跟隨）、追問建議動態產生 |
-| 儀表板 | `client/src/Dashboard.jsx` | 六狀態、趨勢圖雙 Y 軸可切換 5 台、步驟進度條、倒數計時器、執行紀錄列表（60s 刷新）|
-| SOP 執行頁 | `client/src/SOPPage.jsx` | 三步驟法規選擇（per-device）、步驟依序追蹤、SP+PV 波型曲線、執行資訊面板 |
+| 儀表板 | `client/src/Dashboard.jsx` | 六狀態、趨勢圖雙 Y 軸可切換 5 台、步驟進度條、倒數計時器、執行紀錄列表（60s 刷新）、低溫 < 0°C 隱藏濕度、趨勢圖低溫段 humidity 存 null |
+| SOP 執行頁 | `client/src/SOPPage.jsx` | 三步驟法規選擇（per-device）、treeLoaded skeleton、步驟依序追蹤、generateSP 低溫 < 0°C 濕度為 null、SP+PV 波型曲線、執行資訊面板 |
 | 異常看板 | `client/src/Errorlog.jsx` | 統計卡片 + 完整紀錄列表，60s 自動刷新 |
+| 全域路由 | `client/src/App.jsx` | CSS display 切換（非 Router unmount），四頁面常駐 DOM，切換無延遲 |
 | QA 報告模板 | `docs/templates/` | 對外 Word 模板 |
 
 ### 下一步待開發（依優先度）
@@ -50,6 +51,28 @@
 | 自動捲動 | `userScrolledUpRef` 追蹤使用者是否往上捲；距底部 > 80px 停止強制跟隨；送出時呼叫 `scrollToBottomForce()` 重置 |
 | 簡體偵測 | `SIMPLIFIED_ONLY Set`，只含繁體絕對不出現的字；排除繁簡共用字（如温、湿） |
 | 追問建議 | `generateSuggestions` prompt 同樣加 `TC_PREFIX`，防止建議欄出現簡體 |
+
+### SOPPage.jsx 關鍵設計規範
+| 項目 | 規範 |
+|------|------|
+| `treeLoaded` | 標準樹 API 回傳前顯示 skeleton，失敗不卡死 |
+| `generateSP()` 濕度 | `sp_temp < 0 ? null : humiVal`，低溫段曲線 humidity 為 null |
+| `ConditionCard` | 下限 < 0°C 的測試，濕度欄補註「低溫段 <0°C 無濕度」 |
+
+### Dashboard.jsx 關鍵設計規範
+| 項目 | 規範 |
+|------|------|
+| 濕度顯示 | `showHumi = temperature >= 0`，低溫時顯示「— 低溫無濕度」 |
+| 趨勢圖存點 | 即時輪詢存點：`temperature < 0` 的 humidity 存 `null` |
+| 補撈歷史 | 切換設備補撈舊資料時，低溫段 humidity 同樣轉為 `null` |
+| `connectNulls` | 濕度 Line 設 `connectNulls={false}`，null 段自動斷線不連 |
+
+### App.jsx 頁面切換設計
+| 項目 | 規範 |
+|------|------|
+| 切換方式 | `useState(currentPage)` + `display: none / block`，**非** React Router |
+| 優點 | 四頁面常駐 DOM，API 只打一次，state/輪詢/圖表全保留 |
+| 注意 | 無 URL 路由，不支援直接輸入 URL 跳頁；如日後需要再改回 Router |
 
 ### 前端輪詢策略（實際程式碼）
 | 元件 | 輪詢內容 | 頻率 |
@@ -91,6 +114,13 @@ alembic upgrade head
 | `dwell_time_hours` | `dwell_time` |
 | `humidity_rh_percent` | `humidity` |
 
+### Git 提交路徑規範
+| 檔案 | 正確路徑 |
+|------|---------|
+| 前端元件 | `client/src/ComponentName.jsx` |
+| 後端模組 | `backend/app/module.py` |
+| 模擬器 | `simulator/main.py` |
+
 ---
 
 ## 1. 系統架構理論
@@ -130,6 +160,7 @@ alembic upgrade head
 - **per-device state**：SOPPage 的法規選擇、步驟勾選、safetyChecked、chartHistory 都儲存在 `deviceStates[deviceId]`，切換設備不互相干擾。
 - **AIPage 串流架構**：`fetch` + `ReadableStream`；`streamTextRef`（ref）追蹤即時內容供 `stopStream()` 讀取，避免 closure 問題；`startTimeRef` 計算回覆耗時。
 - **AIPage 捲動架構**：`chatAreaRef` 綁定捲動容器；`userScrolledUpRef` 記錄使用者是否離開底部；智慧自動捲不干擾閱讀。
+- **濕度顯示規範**：模擬環境下低溫段（< 0°C）感測器回傳值無意義，前端一律隱藏或存 null；待 Phase 3 接真實硬體後改依 `humidity_control` 欄位判斷。
 
 ---
 

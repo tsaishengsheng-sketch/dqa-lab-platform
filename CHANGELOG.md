@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-03-12
+
+**前端效能優化 & 濕度顯示邏輯修正**
+
+前端
+
+- **perf**: `App.jsx` 改用 CSS `display` 切換取代 React Router `unmount/remount`，四個頁面永遠存在 DOM，切換頁面不重打 API、不重建 state，消除約 3 秒延遲
+- **fix**: `SOPPage.jsx` 頁面初始載入加入 `treeLoaded` state，標準樹 API 回傳前顯示「⏳ 載入標準資料中...」skeleton，不阻塞主畫面渲染
+- **fix**: `SOPPage.jsx` `generateSP()` 濕度邏輯修正：溫度 < 0°C 時 `sp_humi = null`，圖表低溫段濕度線自動斷開
+- **fix**: `SOPPage.jsx` `ConditionCard` 低溫段（下限 < 0°C）濕度欄自動補註「低溫段 <0°C 無濕度」
+- **fix**: `Dashboard.jsx` DeviceCard 濕度顯示：溫度 < 0°C 時顯示「— 低溫無濕度」而非錯誤數值
+- **fix**: `Dashboard.jsx` 趨勢圖存點時溫度 < 0°C 的 `humidity` 存 `null`，圖表低溫段濕度線自動斷開（`connectNulls={false}`）
+- **fix**: `Dashboard.jsx` 補撈歷史資料時同樣將低溫段 `humidity` 轉為 `null`
+
+後端
+
+- **perf**: `sop.py` `get_standards_tree()` 移除 `steps` 欄位，`/api/sop/standards/tree` 回應從 108kB 縮減至約 12kB（縮小 9 倍），前端法規選擇載入速度大幅提升
+- **perf**: `main.py` `start_sop` 啟動時將 `total_steps` 存入 AICM_CACHE，`get_all_devices()` 改從 cache 直接讀取，不再每次 `json.loads(active_sop_json)` 重複解析
+
+---
+
 ## 2026-03-11
 
 **AI 輔助模組 — 法規諮詢助手（後端 + 前端完整交付）**

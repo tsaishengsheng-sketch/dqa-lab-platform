@@ -29,16 +29,17 @@
 ## 核心功能
 
 - **多設備同步監控** — 5 台溫箱（KSON_CH01～CH05）各自獨立模擬運作，SELECT DEVICE 按鈕即時反映各設備狀態顏色
-- **儀表板** — 即時溫濕度監控（每秒更新）、趨勢圖雙 Y 軸、步驟進度條、倒數計時器、六種狀態顏色區分
+- **儀表板** — 即時溫濕度監控（每秒更新）、趨勢圖雙 Y 軸、步驟進度條、倒數計時器、六種狀態顏色區分；低溫（< 0°C）自動隱藏濕度顯示
 - **三步驟法規選擇** — 法規 → 版本/Class → 測試條件，6 大法規、64 個官方測試條件，各設備選擇獨立儲存
 - **SOP 步驟依序確認** — 步驟必須依序勾選，取消時連鎖清除後續，Optional 步驟可跳過，每次勾選即時同步後端
-- **完整波型曲線** — SP 目標曲線（虛線）與 PV 實際曲線（實線）疊加顯示，X 軸為完整測試時長
+- **完整波型曲線** — SP 目標曲線（虛線）與 PV 實際曲線（實線）疊加顯示，X 軸為完整測試時長；低溫段（< 0°C）濕度線自動斷開
 - **執行資訊面板** — Pgm / Step / Free Time / Cycle / Now Time / End Time，對應 KSON 溫箱面板格式
 - **AI 法規諮詢** — 自然語言描述需求，串流逐字回覆，支援中途停止、複製、計時、對話持久化、智慧捲動、動態追問建議
 - **物理模擬引擎** — 即時升降溫斜率模擬，遵守各標準速率限制，每 10 秒寫 DB，依 ISO/IEC 17025:2017 §7.5 & §8.4 永久保存
 - **異常看板** — 緊急停止自動寫入事件紀錄，記錄當下溫濕度與執行中 SOP，每 60 秒自動刷新
 - **ISO 17025 測試報告** — 7 節格式，big5 編碼，PASS/FAIL 由授權工程師人工判定
 - **重啟恢復** — 伺服器重啟後自動恢復 RUNNING 狀態、步驟進度與 SOP 資料
+- **瞬間頁面切換** — App.jsx 採 CSS display 切換取代路由 unmount，四頁面狀態常駐記憶體，切換無延遲
 
 ## 支持的環境測試標準（64 個測試條件）
 
@@ -78,7 +79,7 @@ make dev
 | GET  | `/api/devices` | 所有設備即時狀態（含 total_steps、completed_steps、started_at） |
 | GET  | `/api/devices/{id}/history` | 設備歷史溫濕度（每分鐘聚合，從 started_at 至今） |
 | GET  | `/api/sop/` | SOP 列表 |
-| GET  | `/api/sop/standards/tree` | 三層標準樹（法規→版本→測試條件） |
+| GET  | `/api/sop/standards/tree` | 三層標準樹（法規→版本→測試條件，不含 steps 欄位） |
 | POST | `/api/sop/start` | 啟動 SOP |
 | POST | `/api/devices/{id}/progress` | 更新步驟完成數 |
 | POST | `/api/sop-executions/` | 儲存執行紀錄（含 device_id、operator、test_started_at） |

@@ -6,9 +6,9 @@
 
 ## 📁 客戶端 (Browser) - React 前端模塊
 
-- **✅ 全域路由控制 (App Router)**: 由 `App.jsx` 統一管理頂部導航列，active 頁面高亮顯示。路由：`/`（儀表板）、`/sop`（SOP 執行）、`/errors`（異常看板）、`/ai`（AI 諮詢）。
-- **✅ 儀表板 (Dashboard)**: 即時溫濕度大字顯示（每秒更新）、趨勢折線圖（雙 Y 軸，每 60 秒存一點，完整測試時長 + Brush 縮放，buffer 5760 點）、DeviceCard 步驟進度條與倒數計時器、六種狀態 badge、執行紀錄列表（60s 刷新）、GitHub dark 主題。
-- **✅ SOP 執行頁 (SOPPage)**: 40/60 雙欄佈局；三步驟法規選擇（per-device 獨立 state）；步驟依序追蹤（勾選同步後端）；SP+PV 波型曲線（雙 Y 軸、Brush 縮放）；執行資訊面板（Pgm/Step/Free Time/Cycle/Now Time/End Time）；上架安全確認；重啟後步驟恢復。
+- **✅ 全域路由控制 (App Router)**: `App.jsx` 改用 CSS `display` 切換取代 React Router unmount/remount，四個頁面常駐 DOM，切換不重打 API、不重建 state，頁面切換近乎瞬間。導覽列 active 頁面高亮顯示。頁面：`/`（儀表板）、`/sop`（SOP 執行）、`/errors`（異常看板）、`/ai`（AI 諮詢）。
+- **✅ 儀表板 (Dashboard)**: 即時溫濕度大字顯示（每秒更新）、趨勢折線圖（雙 Y 軸，每 60 秒存一點，完整測試時長 + Brush 縮放，buffer 5760 點）、DeviceCard 步驟進度條與倒數計時器、六種狀態 badge、執行紀錄列表（60s 刷新）、GitHub dark 主題。低溫（< 0°C）時自動隱藏濕度顯示並將趨勢圖該段 humidity 存為 null（`connectNulls={false}` 自動斷線）。
+- **✅ SOP 執行頁 (SOPPage)**: 40/60 雙欄佈局；三步驟法規選擇（per-device 獨立 state）；步驟依序追蹤（勾選同步後端）；SP+PV 波型曲線（雙 Y 軸、Brush 縮放）；執行資訊面板（Pgm/Step/Free Time/Cycle/Now Time/End Time）；上架安全確認；重啟後步驟恢復。`treeLoaded` state 管理標準樹載入，未就緒前顯示 skeleton。`generateSP()` 溫度 < 0°C 時 `sp_humi = null`，低溫段圖表濕度線自動斷開。
 - **✅ 異常看板 (ErrorLog)**: 統計卡片 + 完整紀錄列表，每 60 秒自動刷新。
 - **✅ AI 諮詢頁 (AIPage)**: 法規諮詢對話介面，串流逐字輸出、Markdown 渲染、左側欄快速提問（可收合）、中途停止並保留內容、複製回覆、回覆計時、localStorage 對話持久化、智慧捲動（使用者往上捲時不強制跟隨）、追問建議動態產生（繁體強制）、簡體精確偵測（SIMPLIFIED_ONLY Set）。
 - **規劃中**: 治具管理、設備管理、使用者中心。
@@ -25,7 +25,7 @@
 | GET  | `/api/devices` | 所有設備即時狀態（含 total_steps、completed_steps、started_at、estimated_end_at）|
 | GET  | `/api/devices/{id}/history` | 設備歷史溫濕度，從 started_at 至今每分鐘聚合 |
 | GET  | `/api/sop/` | SOP 列表（從 STANDARD_TREE 自動展開） |
-| GET  | `/api/sop/standards/tree` | 完整三層標準樹（法規→版本→測試條件） |
+| GET  | `/api/sop/standards/tree` | 三層標準樹（法規→版本→測試條件），**不含 steps 欄位**，回應約 12kB |
 | POST | `/api/sop/start` | 啟動 SOP，記錄 started_at，清零 completed_steps |
 | POST | `/api/devices/{id}/progress` | 更新完成步驟數並持久化（ProgressPayload 型別安全） |
 | POST | `/api/sop-executions/` | 儲存 SOP 執行紀錄（含 device_id、operator、test_started_at） |
@@ -60,6 +60,8 @@
 | KEMA | 4 |
 | NMEA | 7 |
 
+> `GET /api/sop/standards/tree` 回傳時已移除 `steps` 欄位（108kB → ~12kB），前端選取法規時不再傳輸步驟資料，啟動 SOP 時才取完整定義。
+
 ---
 
 ## 📁 業務服務層 & 資料模型
@@ -70,6 +72,7 @@
 - `FINISHING` 自動降溫至 25°C 後回 `IDLE`
 - 每台設備獨立 DB session，一台出錯不影響其他設備
 - 所有時間戳統一使用 `_now_utc()` 產生 UTC-aware datetime
+- `total_steps` 於 `start_sop` 時存入 AICM_CACHE，`get_all_devices()` 直接讀取，不重複解析 JSON
 
 ### 資料庫表格 (SQLite)
 
@@ -110,11 +113,11 @@
 
 | 模組 | 狀態 | 說明 |
 |------|------|------|
-| 前端路由 | ✅ | App.jsx 統一管理，含 /ai 路由 |
-| 儀表板 | ✅ | 即時監控、趨勢圖雙 Y 軸、buffer 5760 點、步驟進度條、倒數計時器、執行紀錄列表（60s 刷新） |
-| SOP 三步驟法規選擇 | ✅ | 法規→版本→測試條件，動態載入，per-device 獨立 state |
+| 前端路由 | ✅ | App.jsx CSS display 切換，四頁面常駐 DOM，切換無延遲 |
+| 儀表板 | ✅ | 即時監控、趨勢圖雙 Y 軸、buffer 5760 點、步驟進度條、倒數計時器、執行紀錄列表（60s 刷新）、低溫濕度隱藏 |
+| SOP 三步驟法規選擇 | ✅ | 法規→版本→測試條件，動態載入（skeleton），per-device 獨立 state |
 | SOP 步驟依序追蹤 | ✅ | 依序解鎖、取消連鎖清除、Optional 可跳過、勾選即時同步後端 |
-| 完整波型曲線 | ✅ | SP 虛線 + PV 實線疊加，X 軸完整測試時長，雙 Y 軸 |
+| 完整波型曲線 | ✅ | SP 虛線 + PV 實線疊加，X 軸完整測試時長，雙 Y 軸，低溫段濕度線斷開 |
 | 執行資訊面板 | ✅ | Pgm / Step / Free Time / Cycle / Now Time / End Time |
 | 異常看板 | ✅ | 緊急停止自動記錄，統計卡片 + 列表，60s 自動刷新 |
 | 環境測試標準 | ✅ | 6 法規，64 個測試條件 |
@@ -123,6 +126,7 @@
 | CSV 測試報告 | ✅ | ISO 17025 格式，big5，PASS/FAIL 人工填寫，RFC 5987 檔名 |
 | 設備狀態持久化 | ✅ | DeviceState 表，重啟後自動恢復 |
 | 資料庫遷移 (Alembic) | ✅ | initial schema 基準版本已建立 |
+| Standards Tree 效能 | ✅ | 移除 steps 欄位，108kB → ~12kB；total_steps 存 cache 避免重複 parse |
 | AI 法規諮詢後端 | ✅ | Ollama qwen2.5:7b，串流 + 非串流，多輪對話，繁體中文強制 |
 | AI 法規諮詢前端 | ✅ | AIPage.jsx，串流、Markdown、快速提問、停止、複製、計時、localStorage、智慧捲動、簡體精確偵測、追問建議繁體強制 |
 | AI 治具助手 | ⏳ | 規劃中 |
