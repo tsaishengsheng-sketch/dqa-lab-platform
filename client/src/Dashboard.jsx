@@ -37,7 +37,6 @@ const card = {
   padding: "20px 24px",
 };
 
-// ── 倒數計時 hook（純前端計算，不依賴 API 輪詢）────────────
 const useCountdown = (estimatedEndAt) => {
   const [remaining, setRemaining] = useState(null);
 
@@ -65,7 +64,6 @@ const useCountdown = (estimatedEndAt) => {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 };
 
-// ── 單台設備卡片 ──────────────────────────────────────────
 const DeviceCard = ({ device, selected, onClick }) => {
   const sc = STATUS_CONFIG[device.status] || STATUS_CONFIG.OFFLINE;
   const isActive = ["RUNNING", "PAUSED", "FINISHING", "EMERGENCY"].includes(
@@ -78,6 +76,9 @@ const DeviceCard = ({ device, selected, onClick }) => {
   const countdown = useCountdown(
     showCountdown ? device.estimated_end_at : null,
   );
+
+  // 溫度低於 0°C 時不顯示濕度（物理上無法控濕）
+  const showHumi = device.temperature >= 0;
 
   return (
     <div
@@ -127,7 +128,7 @@ const DeviceCard = ({ device, selected, onClick }) => {
         </span>
       </div>
 
-      {/* 溫濕度 */}
+      {/* 溫濕度：temp < 0°C 時濕度顯示 — */}
       <div
         style={{
           display: "flex",
@@ -171,19 +172,35 @@ const DeviceCard = ({ device, selected, onClick }) => {
           >
             HUMI
           </div>
-          <div
-            style={{
-              color: "#a5d6ff",
-              fontSize: 36,
-              fontWeight: 800,
-              lineHeight: 1,
-            }}
-          >
-            {device.humidity.toFixed(1)}
-            <span style={{ fontSize: 14, color: "#484f58", marginLeft: 3 }}>
-              %
-            </span>
-          </div>
+          {showHumi ? (
+            <div
+              style={{
+                color: "#a5d6ff",
+                fontSize: 36,
+                fontWeight: 800,
+                lineHeight: 1,
+              }}
+            >
+              {device.humidity.toFixed(1)}
+              <span style={{ fontSize: 14, color: "#484f58", marginLeft: 3 }}>
+                %
+              </span>
+            </div>
+          ) : (
+            <div
+              style={{
+                color: "#484f58",
+                fontSize: 28,
+                fontWeight: 800,
+                lineHeight: 1,
+              }}
+            >
+              —
+              <span style={{ fontSize: 11, color: "#484f58", marginLeft: 4 }}>
+                低溫無濕度
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -243,7 +260,7 @@ const DeviceCard = ({ device, selected, onClick }) => {
         </div>
       )}
 
-      {/* 倒數計時器（純前端 1 秒更新，不依賴 API）*/}
+      {/* 倒數計時器 */}
       {showCountdown && countdown !== null && (
         <div
           style={{
@@ -275,7 +292,6 @@ const DeviceCard = ({ device, selected, onClick }) => {
   );
 };
 
-// ── 主元件 ────────────────────────────────────────────────
 const Dashboard = () => {
   const [devices, setDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState("KSON_CH01");
@@ -286,7 +302,6 @@ const Dashboard = () => {
   const lastMinuteRef = useRef(-1);
   const [executions, setExecutions] = useState([]);
 
-  // 切換設備時從 history API 補撈歷史資料
   useEffect(() => {
     axios
       .get(`${API}/api/devices/${selectedDevice}/history`)
@@ -294,16 +309,14 @@ const Dashboard = () => {
         historyRef.current[selectedDevice] = r.data.map((p) => ({
           time: p.time,
           temperature: p.temperature,
-          humidity: p.humidity,
+          // 歷史資料：溫度 < 0°C 的濕度點設為 null，圖表自動斷線
+          humidity: p.temperature < 0 ? null : p.humidity,
         }));
         setHistoryTick((t) => t + 1);
       })
       .catch((err) => console.error("[Dashboard] history fetch:", err));
   }, [selectedDevice]);
 
-  // 每 10 秒向後端 fetch 一次設備狀態
-  // 趨勢圖：只在整分鐘（seconds < 10）才存一個點，避免重複
-  // 倒數計時器由 useCountdown hook 自行每秒更新，不依賴此 interval
   useEffect(() => {
     const fetchDevices = async () => {
       try {
@@ -321,7 +334,8 @@ const Dashboard = () => {
               buf.push({
                 time: label,
                 temperature: d.temperature,
-                humidity: d.humidity,
+                // 即時存點：溫度 < 0°C 的濕度存 null，不記錄無效數值
+                humidity: d.temperature < 0 ? null : d.humidity,
               });
               if (buf.length > 5760) buf.shift();
             }
@@ -332,13 +346,11 @@ const Dashboard = () => {
         console.error("[Dashboard] devices fetch:", err);
       }
     };
-    // 改為每 10 秒 fetch 一次（原本每秒），狀態變化感知仍足夠
     const interval = setInterval(fetchDevices, 10000);
     fetchDevices();
     return () => clearInterval(interval);
   }, []);
 
-  // 執行紀錄：有新 SOP 啟動才會變，每 60 秒刷新即可（原本 30 秒）
   useEffect(() => {
     const fetchExecutions = () => {
       axios
@@ -433,7 +445,6 @@ const Dashboard = () => {
           >
             {selectedDevice} — TEMP / HUMI TREND（完整測試時長）
           </div>
-          {/* CH01~CH05 切換按鈕 */}
           <div style={{ display: "flex", gap: 6 }}>
             {DEVICE_IDS.map((id) => {
               const d = devices.find((x) => x.device_id === id);
@@ -530,10 +541,14 @@ const Dashboard = () => {
                   fontSize: 11,
                 }}
                 labelStyle={{ color: "#8b949e", marginBottom: 4 }}
-                formatter={(v, name) => [
-                  `${v.toFixed(1)}${name === "temperature" ? " °C" : " %RH"}`,
-                  name === "temperature" ? "溫度" : "濕度",
-                ]}
+                formatter={(v, name) => {
+                  if (v === null)
+                    return ["—", name === "temperature" ? "溫度" : "濕度"];
+                  return [
+                    `${v.toFixed(1)}${name === "temperature" ? " °C" : " %RH"}`,
+                    name === "temperature" ? "溫度" : "濕度",
+                  ];
+                }}
               />
               <Line
                 yAxisId="temp"
@@ -554,6 +569,7 @@ const Dashboard = () => {
                 strokeWidth={1.5}
                 dot={false}
                 isAnimationActive={false}
+                connectNulls={false}
               />
               <Brush
                 dataKey="time"
