@@ -5,14 +5,14 @@ const STORAGE_KEY = "dqa_ai_chat_history";
 const STORAGE_VERSION = 1; // 版本號，結構變動時遞增，舊資料自動清除
 const MAX_HISTORY = 50;
 
+// ── 免責聲明（層級一：每則 AI 回覆固定顯示）────────────────
+const DISCLAIMER =
+  "⚠️ 本建議僅供初步評估參考，實際測試條件與判定標準請以原始法規文件為準，並由授權工程師確認。";
+
 // ── 繁體中文強制前綴（只在送給 API 時加，不存入 messages）────
-// BUG FIX: 前綴只附加在送出給 Ollama 的 message 欄位，
-//          絕對不存入 messages state，避免多輪對話後不斷累積。
 const TC_PREFIX = "[請用繁體中文回覆，不可有任何簡體字] ";
 
 // ── 簡體中文特徵字偵測 ───────────────────────────────────────
-// 只收錄「繁體中文絕對不會出現」的簡體專屬字，避免誤判。
-// 繁簡字形相同或視覺近似的字（如温、湿）一律排除。
 const SIMPLIFIED_ONLY = new Set([
   "设",
   "备",
@@ -99,7 +99,6 @@ function loadMessages() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    // 舊格式（直接是陣列）或版本不符 → 清除，從空白開始
     if (
       !parsed ||
       parsed.version !== STORAGE_VERSION ||
@@ -299,50 +298,50 @@ function MessageBubble({ m, onRetry }) {
           {m.role === "assistant" ? (
             <CollapsibleBubble>{renderMarkdown(m.content)}</CollapsibleBubble>
           ) : (
-            // messages.content 存的是原始使用者輸入，不含前綴，直接顯示即可
             <p style={{ margin: 0 }}>{m.content}</p>
           )}
         </div>
+
+        {/* ── AI 回覆 meta 區 ── */}
         {m.role === "assistant" && (
-          <div style={styles.bubbleMeta}>
-            {m.elapsed != null && (
-              <span style={styles.elapsed}>⏱ {m.elapsed}s</span>
-            )}
-            {m.stopped && (
-              <span style={{ ...styles.elapsed, color: "#f85149" }}>
-                已停止
-              </span>
-            )}
-            {simplified && (
-              <>
-                <span style={{ ...styles.elapsed, color: "#e3b341" }}>
-                  ⚠️ 含簡體
+          <>
+            {/* 免責聲明（層級一）：每則 AI 回覆固定顯示，視覺上明顯但不干擾 */}
+            <div style={styles.disclaimer}>{DISCLAIMER}</div>
+
+            <div style={styles.bubbleMeta}>
+              {m.elapsed != null && (
+                <span style={styles.elapsed}>⏱ {m.elapsed}s</span>
+              )}
+              {m.stopped && (
+                <span style={{ ...styles.elapsed, color: "#f85149" }}>
+                  已停止
                 </span>
-                {/*
-                  BUG FIX: onRetry 呼叫 retryInTraditional(i)，
-                  該函式從 messages[i-1] 取出乾淨的 user content（不含前綴），
-                  再呼叫 sendMessage()，sendMessage 內部才加前綴送給 API。
-                  因此這裡不需要也不應該在按鈕層手動拼接前綴。
-                */}
-                <button
-                  style={{ ...styles.copyBtn, color: "#e3b341" }}
-                  onClick={onRetry}
-                >
-                  重新用繁體回答
-                </button>
-              </>
-            )}
-            <button
-              style={{
-                ...styles.copyBtn,
-                color: copied ? "#3fb950" : "#8b949e",
-              }}
-              onClick={handleCopy}
-              title="複製回覆"
-            >
-              {copied ? "✓ 已複製" : "複製"}
-            </button>
-          </div>
+              )}
+              {simplified && (
+                <>
+                  <span style={{ ...styles.elapsed, color: "#e3b341" }}>
+                    ⚠️ 含簡體
+                  </span>
+                  <button
+                    style={{ ...styles.copyBtn, color: "#e3b341" }}
+                    onClick={onRetry}
+                  >
+                    重新用繁體回答
+                  </button>
+                </>
+              )}
+              <button
+                style={{
+                  ...styles.copyBtn,
+                  color: copied ? "#3fb950" : "#8b949e",
+                }}
+                onClick={handleCopy}
+                title="複製回覆"
+              >
+                {copied ? "✓ 已複製" : "複製"}
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -351,7 +350,6 @@ function MessageBubble({ m, onRetry }) {
 
 // ── 主元件 ───────────────────────────────────────────────────
 export default function AIPage() {
-  // ← 改用 loadMessages()，會檢查版本號，舊格式自動清除
   const [messages, setMessages] = useState(() => loadMessages());
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -362,21 +360,18 @@ export default function AIPage() {
   const prevSuggestionsRef = useRef(null);
 
   const bottomRef = useRef(null);
-  const chatAreaRef = useRef(null); // 捲動容器 ref
+  const chatAreaRef = useRef(null);
   const inputRef = useRef(null);
   const textareaRef = useRef(null);
   const abortControllerRef = useRef(null);
   const streamTextRef = useRef("");
   const startTimeRef = useRef(null);
-  const userScrolledUpRef = useRef(false); // 使用者是否已往上捲
+  const userScrolledUpRef = useRef(false);
 
-  // ── localStorage 同步（含容量保護）──────────────────────────
   useEffect(() => {
     saveMessages(messages);
   }, [messages]);
 
-  // ── 監聽使用者手動捲動，記錄是否離開底部 ────────────────────
-  // 距底部 80px 內視為「在底部」，超過則標記使用者已往上捲
   useEffect(() => {
     const el = chatAreaRef.current;
     if (!el) return;
@@ -388,24 +383,17 @@ export default function AIPage() {
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  // ── 智慧自動捲到底：使用者往上捲時不強制跟隨 ───────────────
-  // - 新訊息送出（messages 變化）且使用者在底部附近 → 捲到底
-  // - 串流輸出中（streamText 變化）且使用者在底部附近 → 捲到底
-  // - 使用者已往上捲 → 不干擾，讓他自由閱讀
   useEffect(() => {
     if (!userScrolledUpRef.current) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, streamText]);
 
-  // ── 送出新訊息時強制捲到底（使用者主動送出，重置捲動狀態）──
-  // 由 sendMessage 呼叫，確保每次送出都能看到最新回覆起點
   const scrollToBottomForce = useCallback(() => {
     userScrolledUpRef.current = false;
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  // ── textarea auto-resize ─────────────────────────────────────
   const handleInputChange = (e) => {
     setInput(e.target.value);
     const el = e.target;
@@ -416,18 +404,14 @@ export default function AIPage() {
     el.style.height = Math.min(Math.max(el.scrollHeight, minH), maxH) + "px";
   };
 
-  // ── 產生追問建議 ─────────────────────────────────────────────
   const generateSuggestions = useCallback(
     async (currentMessages) => {
       setSuggestLoading(true);
       try {
         const recentHistory = currentMessages.slice(-6).map((m) => ({
           role: m.role,
-          // BUG FIX: m.content 已是乾淨字串（不含 TC_PREFIX），
-          //          直接送給建議 API 即可，不需要再加前綴。
           content: m.content,
         }));
-        // 追問建議 prompt 同樣加上繁體前綴，避免模型回傳簡體建議文字
         const prompt =
           TC_PREFIX +
           "根據以上對話內容，產生 3 個使用者接下來可能想追問的問題，必須與環境測試法規相關。" +
@@ -463,7 +447,6 @@ export default function AIPage() {
     [suggestions],
   );
 
-  // ── 停止串流 ─────────────────────────────────────────────────
   const stopStream = () => {
     const currentText = streamTextRef.current;
     const elapsed = startTimeRef.current
@@ -482,24 +465,16 @@ export default function AIPage() {
     inputRef.current?.focus();
   };
 
-  // ── 送出訊息 ─────────────────────────────────────────────────
-  // BUG FIX 核心：
-  //   - `rawMsg`：使用者原始輸入，存入 messages state 及 history，不含前綴
-  //   - `apiMsg`：送給 Ollama 的 message 欄位，加上 TC_PREFIX 防止語言飄移
-  //   - history 組建時從 messages state 讀取（均為乾淨字串），不會疊加前綴
   const sendMessage = useCallback(
     async (text) => {
-      // rawMsg = 使用者輸入的原始文字，不含任何前綴
       const rawMsg = (text !== undefined ? text : input).trim();
       if (!rawMsg || loading) return;
 
       setInput("");
       if (textareaRef.current) textareaRef.current.style.height = "auto";
 
-      // 存入 messages 的 user content 永遠是乾淨的 rawMsg
       const newMessages = [...messages, { role: "user", content: rawMsg }];
       setMessages(newMessages);
-      // 使用者主動送出，重置捲動狀態確保能看到最新回覆起點
       scrollToBottomForce();
       setLoading(true);
       setSuggestLoading(true);
@@ -508,12 +483,10 @@ export default function AIPage() {
       streamTextRef.current = "";
       startTimeRef.current = Date.now();
 
-      // history 從 messages state 建立，content 均為乾淨字串（不含前綴）
       const history = newMessages
         .slice(0, -1)
         .map((m) => ({ role: m.role, content: m.content }));
 
-      // apiMsg 才加上繁體中文強制前綴，只用於本次 API 請求
       const apiMsg = TC_PREFIX + rawMsg;
 
       const controller = new AbortController();
@@ -523,7 +496,6 @@ export default function AIPage() {
         const res = await fetch(`${API_BASE}/api/ai/standards-query-stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // 送給後端的 message 含前綴，但 history 裡的內容乾淨
           body: JSON.stringify({ message: apiMsg, history }),
           signal: controller.signal,
         });
@@ -577,28 +549,20 @@ export default function AIPage() {
     [messages, input, loading, generateSuggestions, scrollToBottomForce],
   );
 
-  // ── 簡體重問 ─────────────────────────────────────────────────
-  // BUG FIX:
-  //   messages[i] 是含簡體的 AI 回覆，messages[i-1] 是對應的 user 訊息。
-  //   由於 messages 裡的 user content 已是乾淨字串（不含前綴），
-  //   直接把它傳給 sendMessage 即可。
-  //   sendMessage 內部會自動加上 TC_PREFIX 再送給 API，不會在這裡重複疊加。
   const retryInTraditional = useCallback(
     (msgIndex) => {
       let userMsg = "";
       for (let i = msgIndex - 1; i >= 0; i--) {
         if (messages[i].role === "user") {
-          userMsg = messages[i].content; // 乾淨的原始輸入，無前綴
+          userMsg = messages[i].content;
           break;
         }
       }
-      // 直接把乾淨的 userMsg 傳入，sendMessage 會在內部加 TC_PREFIX
       if (userMsg) sendMessage(userMsg);
     },
     [messages, sendMessage],
   );
 
-  // ── 清除對話 ─────────────────────────────────────────────────
   const clearChat = () => {
     setMessages([]);
     setSuggestions(null);
@@ -631,7 +595,6 @@ export default function AIPage() {
           minWidth: sidebarOpen ? 240 : 36,
         }}
       >
-        {/* 頂部 */}
         <div style={styles.sidebarHeader}>
           {sidebarOpen && (
             <span style={styles.sidebarTitle}>
@@ -776,6 +739,7 @@ export default function AIPage() {
                 描述你的產品或測試需求，AI 將從 6 大法規、64
                 個測試條件中推薦最適合的方案。
               </div>
+              <div style={styles.emptyDisclaimer}>{DISCLAIMER}</div>
             </div>
           )}
 
@@ -1035,7 +999,22 @@ const styles = {
     color: "#cdd9e5",
     marginBottom: 8,
   },
-  emptyDesc: { fontSize: 14, color: "#8b949e", lineHeight: 1.7 },
+  emptyDesc: {
+    fontSize: 14,
+    color: "#8b949e",
+    lineHeight: 1.7,
+    marginBottom: 12,
+  },
+  // 空白頁面的免責聲明（進入頁面就看得到）
+  emptyDisclaimer: {
+    fontSize: 11,
+    color: "#6e7681",
+    lineHeight: 1.6,
+    border: "1px solid #21262d",
+    borderRadius: 6,
+    padding: "8px 12px",
+    textAlign: "left",
+  },
   userBubbleWrap: { display: "flex", justifyContent: "flex-end" },
   aiBubbleWrap: { display: "flex", justifyContent: "flex-start" },
   userBubble: {
@@ -1054,6 +1033,16 @@ const styles = {
     fontSize: 14,
     lineHeight: 1.7,
     transition: "border-color .3s",
+  },
+  // 每則 AI 回覆下方的固定免責聲明
+  disclaimer: {
+    fontSize: 11,
+    color: "#6e7681",
+    lineHeight: 1.5,
+    marginTop: 6,
+    paddingLeft: 4,
+    borderLeft: "2px solid #21262d",
+    paddingLeft: 8,
   },
   bubbleMeta: {
     display: "flex",
