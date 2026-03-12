@@ -60,7 +60,6 @@ def get_standards_tree():
                     "reference": test_data.get("reference", ""),
                     "temp_tolerance": test_data.get("temp_tolerance", 2.0),
                     "humi_tolerance": test_data.get("humi_tolerance", 5.0),
-                    "steps": test_data.get("steps", []),
                 }
     return result
 

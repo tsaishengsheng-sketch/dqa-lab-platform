@@ -219,9 +219,7 @@ async def get_all_devices():
             "active_sop_json": item.get("active_sop_json"),
             "completed_steps": item.get("completed_steps", 0),
             # 從 active_sop_json 解析 total_steps 供前端進度條使用
-            "total_steps": len(json.loads(item["active_sop_json"]).get("steps", []))
-            if item.get("active_sop_json")
-            else 0,
+            "total_steps": item.get("total_steps", 0),
             "started_at": item.get("started_at").isoformat()
             if item.get("started_at")
             else None,
@@ -358,6 +356,7 @@ async def emergency_stop(device_id: str):
             "active_sop_json": None,
             "completed_steps": 0,
             "started_at": None,
+            "total_steps": len(std_data.get("steps", [])),
         }
     )
     _save_device_state(device_id, device)
