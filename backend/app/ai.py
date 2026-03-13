@@ -11,12 +11,20 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 OLLAMA_URL = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "qwen2.5:7b"
 
+# fix: 模組載入時建立一次，避免每次 API 呼叫都重跑 get_standard_tree()
+_SYSTEM_PROMPT_CACHE: Optional[str] = None
+
 
 def _build_system_prompt() -> str:
     """
     將 STANDARD_TREE 摘要成文字，嵌入 system prompt。
     只列出法規、版本、測試條件名稱與關鍵參數，不列完整步驟。
+    結果會快取在模組層級，只建立一次。
     """
+    global _SYSTEM_PROMPT_CACHE
+    if _SYSTEM_PROMPT_CACHE is not None:
+        return _SYSTEM_PROMPT_CACHE
+
     tree = get_standard_tree()
     lines = [
         "你是一位專業的工業環境測試法規顧問。",
@@ -56,7 +64,8 @@ def _build_system_prompt() -> str:
                 param_str = "、".join(params) if params else ""
                 lines.append(f"    - {test_data['name']}（{param_str}）")
 
-    return "\n".join(lines)
+    _SYSTEM_PROMPT_CACHE = "\n".join(lines)
+    return _SYSTEM_PROMPT_CACHE
 
 
 class QueryRequest(BaseModel):
