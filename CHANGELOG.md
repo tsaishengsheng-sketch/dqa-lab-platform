@@ -5,6 +5,22 @@
 
 ## 2026-03-13
 
+**法規正確性審查：新增高溫高濕測試條件**
+
+後端
+
+- **feat**: `iec60068.py` 新增 `IEC 60068-2-78:2012 (Test Cab: Damp Heat Steady State)` 共 4 條：
+  - `Cab_65_16h_95RH`：標溫 Method I，65°C / 95%RH / 16h，通電
+  - `Cab_65_24h_95RH`：標溫 Method II，65°C / 95%RH / 24h，通電
+  - `Cab_90_16h_95RH`：寬溫 Method I，90°C / 95%RH / 16h，通電
+  - `Cab_90_24h_95RH`：寬溫 Method II，90°C / 95%RH / 24h，通電
+- **feat**: `iec61850.py` C1 / C2 / C3 各新增 Cab 高溫高濕測試條件共 3 條：
+  - `C1_Cab_40_240h_93RH` / `C2_Cab_40_240h_93RH` / `C3_Cab_40_240h_93RH`
+  - 全部固定：40°C / 93%RH / 240h（IEC 61850-3 Ed.2 Method III 法規明文，非產品規格決定）
+- sop_id 總數：56 → 63
+
+---
+
 **Bug 修復與架構優化**
 
 後端
