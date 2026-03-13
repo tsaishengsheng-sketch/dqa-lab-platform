@@ -11,15 +11,11 @@
 - IEC 61850-3 Ed.1:2002 / Ed.2:2013 (Class C1/C2/C3)
 - DNVGL-CG-0339:2015  (Location Class A/B/C/D)
 - DNV Std.Cert.2.4    (舊版 Class A/B/C/D)
-- KEMA KEUR + IEC/CENELEC
-- IEC 61162-1:2016 (NMEA 0183) / IEC 61162-3:2010 (NMEA 2000)
-
 ramp_rate 說明：
   ✅ 法規明文規定：
     - EN 50155:2017 乾熱/冷測：1°C/min（法規曲線圖明文，DQA 內部 PPT 確認）
     - EN 50155:2017 RTV：≥20°C/min（法規明文）
     - DNVGL-CG-0339:2015 乾熱/冷測：1°C/min（Sec.3 [7][9] 明文）
-    - IEC 60945:2002 (NMEA)：1°C/min（Sec.8.1 明文）
     - IEC 60068-2-14 Test Nb：1~15°C/min（法規允許範圍）
     - IEC 60068-2-14 Test Na：轉換 <30 秒（非速率概念，設 30.0）
   ✅ 公司 SOP 文件確認（方法驗證報告）：
@@ -29,7 +25,6 @@ ramp_rate 說明：
   ⚠️ 待確認（付費文件無法取得，暫用公司預設值）：
     - IEC 60068-2-2 (Ba/Bb)：3.0°C/min（法規無明確規定，暫用寬溫值）
     - IEC 60068-2-30 (Db)：2.0°C/min（IEC 60068-2-30 程序控制，非獨立速率）
-    - KEMA：2.0°C/min（待確認）
 
 模組結構：
   standards/
@@ -38,14 +33,14 @@ ramp_rate 說明：
   ├── iec60068.py     ← IEC 60068-2-1/2/14/30（13 條）
   ├── en50155.py      ← EN 50155:2017 + 2007（19 條）
   ├── iec61850.py     ← IEC 61850-3 Ed.2/Ed.1（10 條）
-  ├── dnv.py          ← DNV CG-0339 + Std.Cert.2.4（15 條）
-  ├── kema.py         ← KEMA（4 條）
-  └── nmea.py         ← NMEA 0183/2000（7 條）
+  └── dnv.py          ← DNV CG-0339 + Std.Cert.2.4（15 條）
+
+注意：KEMA / NMEA 因無原始法規文件可供對照，暫不納入。
 """
 
 from typing import Dict, Any, Optional
 
-from . import iec60068, en50155, iec61850, dnv, kema, nmea
+from . import iec60068, en50155, iec61850, dnv
 
 
 # ══════════════════════════════════════════════════════════════
@@ -54,11 +49,9 @@ from . import iec60068, en50155, iec61850, dnv, kema, nmea
 
 STANDARD_TREE: Dict[str, Any] = {
     "IEC 60068": iec60068.TREE,
-    "EN 50155":  en50155.TREE,
+    "EN 50155": en50155.TREE,
     "IEC 61850-3": iec61850.TREE,
-    "DNV":       dnv.TREE,
-    "KEMA":      kema.TREE,
-    "NMEA":      nmea.TREE,
+    "DNV": dnv.TREE,
 }
 
 
@@ -66,6 +59,7 @@ STANDARD_TREE: Dict[str, Any] = {
 # 向後相容：從 STANDARD_TREE 自動展開 STANDARDS_AND_SOPS
 # 供 sop.py / main.py / reports.py 使用（import 路徑不變）
 # ══════════════════════════════════════════════════════════════
+
 
 def _build_flat_standards() -> Dict[str, Any]:
     """將 STANDARD_TREE 展開為向後相容的平坦結構"""
@@ -94,6 +88,7 @@ STANDARDS_AND_SOPS: Dict[str, Any] = _build_flat_standards()
 # ══════════════════════════════════════════════════════════════
 # 工具函數（向後相容，main.py / sop.py 直接 import）
 # ══════════════════════════════════════════════════════════════
+
 
 def get_standard(sop_id: str) -> Dict[str, Any]:
     return STANDARDS_AND_SOPS.get(sop_id, {})
