@@ -151,10 +151,21 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
         }
     )
 
-    # fix: 統一呼叫 _save_device_state，不再手寫重複 SQL
-    from .main import _save_device_state
-
-    _save_device_state(device_id, device)
+    # 持久化到 DB
+    with SessionLocal() as db:
+        state = db.get(DeviceState, device_id)
+        if state is None:
+            state = DeviceState(device_id=device_id)
+            db.add(state)
+        state.status = "RUNNING"
+        state.running_sop_id = sop_id
+        state.running_sop_name = sop_name
+        state.standard_id = sop_id
+        state.active_sop_json = active_sop_json
+        state.completed_steps = 0
+        state.started_at = now
+        state.updated_at = now
+        db.commit()
 
     print(f"🔥 [{device_id}] Started SOP: {sop_id} ({sop_name})")
     return {"status": "success", "message": f"{device_id} 已啟動 {sop_name}"}
