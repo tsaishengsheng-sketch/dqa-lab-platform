@@ -6,10 +6,15 @@ IEC 61850-3 變電站通訊自動化設備標準
 ramp_rate：✅ 公司 SOP 文件確認（方法驗證報告）：1°C/min
   - C3 Cold（-40°C 寬溫）：3°C/min（公司 SOP 文件確認）
   - Ed.1 Cold（-40°C 寬溫）：3°C/min
+  - Cab 高溫高濕：1°C/min（公司 SOP 文件確認）
 
 冷測分類說明：
   - Operational（通電，Test Ad）：對應 HQ-PD.506
   - Storage（非通電，Test Ab）：對應 HQ-PD.505
+
+高溫高濕說明（IEC 61850-3 Ed.2 Method III）：
+  - 固定條件：40°C / 93%RH / 240h（法規明文規定，非產品規格決定）
+  - C1/C2/C3 共用相同參數（法規未依 Class 分級）
 """
 
 from ._base import steps_single_temp, steps_cycle
@@ -82,6 +87,26 @@ TREE = {
                     "reference": "IEC 61850-3:2013 Ed.2 Class C1 + IEC 60068-2-30",
                     "steps": steps_cycle(25.0, 55.0, 6, 95.0),
                 },
+                "C1_Cab_40_240h_93RH": {
+                    "sop_id": "iec61850_ed2_c1_cab",
+                    "name": "Class C1 高溫高濕 Test Cab：40°C，240h，93%RH（Method III）",
+                    "test_type": "chamber",
+                    "version": "IEC 61850-3 Ed.2:2013",
+                    "description": "C1 等級穩態高溫高濕（Method III）。依 IEC 60068-2-78 Test Cab 執行。40°C / 93%RH / 240 小時，法規明文固定條件，通電工作狀態。",
+                    "high_temperature": 40.0,
+                    "low_temperature": None,
+                    "target_temperature": 40.0,
+                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "dwell_time_hours": 240,
+                    "cycles": 1,
+                    "humidity_rh_percent": 93.0,
+                    "humidity_control": True,
+                    "power_on": True,
+                    "temp_tolerance": 2.0,
+                    "humi_tolerance": 5.0,
+                    "reference": "IEC 61850-3:2013 Ed.2 + IEC 60068-2-78 Test Cab Method III",
+                    "steps": steps_single_temp(40.0, 240, "high"),
+                },
                 "C2_Dry_Heat_+70": {
                     "sop_id": "iec61850_ed2_c2_high",
                     "name": "Class C2 乾熱：+70°C，16h（戶外箱體，通電）",
@@ -142,6 +167,26 @@ TREE = {
                     "reference": "IEC 61850-3:2013 Ed.2 Class C2 + IEC 60068-2-1 Test Ab",
                     "steps": steps_single_temp(-25.0, 16, "low"),
                 },
+                "C2_Cab_40_240h_93RH": {
+                    "sop_id": "iec61850_ed2_c2_cab",
+                    "name": "Class C2 高溫高濕 Test Cab：40°C，240h，93%RH（Method III）",
+                    "test_type": "chamber",
+                    "version": "IEC 61850-3 Ed.2:2013",
+                    "description": "C2 等級穩態高溫高濕（Method III）。依 IEC 60068-2-78 Test Cab 執行。40°C / 93%RH / 240 小時，法規明文固定條件，通電工作狀態。",
+                    "high_temperature": 40.0,
+                    "low_temperature": None,
+                    "target_temperature": 40.0,
+                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "dwell_time_hours": 240,
+                    "cycles": 1,
+                    "humidity_rh_percent": 93.0,
+                    "humidity_control": True,
+                    "power_on": True,
+                    "temp_tolerance": 2.0,
+                    "humi_tolerance": 5.0,
+                    "reference": "IEC 61850-3:2013 Ed.2 + IEC 60068-2-78 Test Cab Method III",
+                    "steps": steps_single_temp(40.0, 240, "high"),
+                },
                 "C3_Dry_Heat_+70": {
                     "sop_id": "iec61850_ed2_c3_high",
                     "name": "Class C3 乾熱：+70°C，16h（嚴苛戶外環境，通電）",
@@ -181,6 +226,26 @@ TREE = {
                     "humi_tolerance": 5.0,
                     "reference": "IEC 61850-3:2013 Ed.2 Class C3 + IEC 60068-2-1 Test Ab",
                     "steps": steps_single_temp(-40.0, 16, "low"),
+                },
+                "C3_Cab_40_240h_93RH": {
+                    "sop_id": "iec61850_ed2_c3_cab",
+                    "name": "Class C3 高溫高濕 Test Cab：40°C，240h，93%RH（Method III）",
+                    "test_type": "chamber",
+                    "version": "IEC 61850-3 Ed.2:2013",
+                    "description": "C3 等級穩態高溫高濕（Method III）。依 IEC 60068-2-78 Test Cab 執行。40°C / 93%RH / 240 小時，法規明文固定條件，通電工作狀態。",
+                    "high_temperature": 40.0,
+                    "low_temperature": None,
+                    "target_temperature": 40.0,
+                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "dwell_time_hours": 240,
+                    "cycles": 1,
+                    "humidity_rh_percent": 93.0,
+                    "humidity_control": True,
+                    "power_on": True,
+                    "temp_tolerance": 2.0,
+                    "humi_tolerance": 5.0,
+                    "reference": "IEC 61850-3:2013 Ed.2 + IEC 60068-2-78 Test Cab Method III",
+                    "steps": steps_single_temp(40.0, 240, "high"),
                 },
             },
         },

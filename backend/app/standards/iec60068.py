@@ -4,6 +4,7 @@ IEC 60068 基礎環境測試標準
 - IEC 60068-2-2:2007  (Test B: Dry Heat) — Ba 高溫儲存 / Bb 高溫工作
 - IEC 60068-2-14:2023 (Test N: Temp Change) — Na 熱衝擊 / Nb 漸進循環
 - IEC 60068-2-30:2005 (Test Db: Damp Heat Cyclic)
+- IEC 60068-2-78:2012 (Test Cab: Damp Heat Steady State)
 
 ramp_rate（公司 SOP 文件確認）：
   ✅ 標溫（-25°C 等級）：1°C/min
@@ -12,6 +13,7 @@ ramp_rate（公司 SOP 文件確認）：
   ✅ Nb：法規允許 1~15°C/min，慣用 2°C/min
   ✅ Na：轉換 <30 秒，設 30.0（非速率概念）
   ⚠️ Db：IEC 60068-2-30 程序控制（3h 升溫），非獨立速率，暫用 2.0
+  ✅ Cab：公司 SOP 文件確認：1°C/min
 """
 
 from ._base import steps_single_temp, steps_cycle
@@ -103,11 +105,46 @@ TREE = {
                     "humi_tolerance": 5.0,
                     "reference": "IEC 60068-2-1:2007 Test Ad + HQ-PD.485",
                     "steps": [
-                        {"step_id": 1, "name": "確認降溫曲線正常", "description": "監控溫度曲線，確認正在降溫至 -25°C，速率 1°C/min，無異常跳動。", "requires_photo": False, "requires_parameters": False, "optional": False},
-                        {"step_id": 2, "name": "確認達到 -25°C，開始計時", "description": "確認溫度穩定在 -25°C ± 2°C，開始計時 48 小時停留。", "requires_photo": False, "requires_parameters": False, "optional": False},
-                        {"step_id": 3, "name": "執行 Power ON/OFF 循環（10 次）", "description": "在 -25°C 穩定後執行 10 次開關機循環：關機 5 分鐘 → 開機 2 小時，重複 10 次。每次開機後確認設備功能正常。", "requires_photo": False, "requires_parameters": False, "optional": False},
-                        {"step_id": 4, "name": "48h 停留完成，拍照記錄", "description": "確認已完成 48 小時低溫停留及全部 10 次開關機循環，拍照記錄設備狀態。", "requires_photo": True, "requires_parameters": False, "optional": False},
-                        {"step_id": 5, "name": "儲存測試紀錄", "description": "點擊儲存按鈕，確認執行紀錄已寫入資料庫，下載 CSV 測試報告。", "requires_photo": False, "requires_parameters": False, "optional": False},
+                        {
+                            "step_id": 1,
+                            "name": "確認降溫曲線正常",
+                            "description": "監控溫度曲線，確認正在降溫至 -25°C，速率 1°C/min，無異常跳動。",
+                            "requires_photo": False,
+                            "requires_parameters": False,
+                            "optional": False,
+                        },
+                        {
+                            "step_id": 2,
+                            "name": "確認達到 -25°C，開始計時",
+                            "description": "確認溫度穩定在 -25°C ± 2°C，開始計時 48 小時停留。",
+                            "requires_photo": False,
+                            "requires_parameters": False,
+                            "optional": False,
+                        },
+                        {
+                            "step_id": 3,
+                            "name": "執行 Power ON/OFF 循環（10 次）",
+                            "description": "在 -25°C 穩定後執行 10 次開關機循環：關機 5 分鐘 → 開機 2 小時，重複 10 次。每次開機後確認設備功能正常。",
+                            "requires_photo": False,
+                            "requires_parameters": False,
+                            "optional": False,
+                        },
+                        {
+                            "step_id": 4,
+                            "name": "48h 停留完成，拍照記錄",
+                            "description": "確認已完成 48 小時低溫停留及全部 10 次開關機循環，拍照記錄設備狀態。",
+                            "requires_photo": True,
+                            "requires_parameters": False,
+                            "optional": False,
+                        },
+                        {
+                            "step_id": 5,
+                            "name": "儲存測試紀錄",
+                            "description": "點擊儲存按鈕，確認執行紀錄已寫入資料庫，下載 CSV 測試報告。",
+                            "requires_photo": False,
+                            "requires_parameters": False,
+                            "optional": False,
+                        },
                     ],
                 },
             },
@@ -307,6 +344,92 @@ TREE = {
                     "humi_tolerance": 5.0,
                     "reference": "IEC 60068-2-30:2005 Test Db Variant 1",
                     "steps": steps_cycle(25.0, 40.0, 2, 93.0),
+                },
+            },
+        },
+        "IEC 60068-2-78:2012 (Test Cab: Damp Heat Steady State)": {
+            "label": "IEC 60068-2-78:2012 穩態高溫高濕測試",
+            "description": "Test Cab：穩態高溫高濕，評估產品在持續高溫高濕環境下的功能性與材料耐受性。測試溫度為產品額定最高工作溫度 + 5°C，通電工作狀態。",
+            "tests": {
+                "Cab_65_16h_95RH": {
+                    "sop_id": "iec60068_cab_65_16h_95rh",
+                    "name": "穩態高溫高濕 Test Cab：65°C，16h，95%RH（標溫，Method I）",
+                    "test_type": "chamber",
+                    "version": "IEC 60068-2-78:2012",
+                    "description": "Test Cab Method I：標溫產品（額定最高工作溫度 + 5°C = 65°C），95%RH，16 小時穩態高溫高濕，通電。",
+                    "high_temperature": 65.0,
+                    "low_temperature": None,
+                    "target_temperature": 65.0,
+                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "dwell_time_hours": 16,
+                    "cycles": 1,
+                    "humidity_rh_percent": 95.0,
+                    "humidity_control": True,
+                    "power_on": True,
+                    "temp_tolerance": 2.0,
+                    "humi_tolerance": 5.0,
+                    "reference": "IEC 60068-2-78:2012 Test Cab Method I",
+                    "steps": steps_single_temp(65.0, 16, "high"),
+                },
+                "Cab_65_24h_95RH": {
+                    "sop_id": "iec60068_cab_65_24h_95rh",
+                    "name": "穩態高溫高濕 Test Cab：65°C，24h，95%RH（標溫，Method II）",
+                    "test_type": "chamber",
+                    "version": "IEC 60068-2-78:2012",
+                    "description": "Test Cab Method II：標溫產品（額定最高工作溫度 + 5°C = 65°C），95%RH，24 小時穩態高溫高濕，通電。",
+                    "high_temperature": 65.0,
+                    "low_temperature": None,
+                    "target_temperature": 65.0,
+                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "dwell_time_hours": 24,
+                    "cycles": 1,
+                    "humidity_rh_percent": 95.0,
+                    "humidity_control": True,
+                    "power_on": True,
+                    "temp_tolerance": 2.0,
+                    "humi_tolerance": 5.0,
+                    "reference": "IEC 60068-2-78:2012 Test Cab Method II",
+                    "steps": steps_single_temp(65.0, 24, "high"),
+                },
+                "Cab_90_16h_95RH": {
+                    "sop_id": "iec60068_cab_90_16h_95rh",
+                    "name": "穩態高溫高濕 Test Cab：90°C，16h，95%RH（寬溫，Method I）",
+                    "test_type": "chamber",
+                    "version": "IEC 60068-2-78:2012",
+                    "description": "Test Cab Method I：寬溫產品（額定最高工作溫度 + 5°C = 90°C），95%RH，16 小時穩態高溫高濕，通電。",
+                    "high_temperature": 90.0,
+                    "low_temperature": None,
+                    "target_temperature": 90.0,
+                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "dwell_time_hours": 16,
+                    "cycles": 1,
+                    "humidity_rh_percent": 95.0,
+                    "humidity_control": True,
+                    "power_on": True,
+                    "temp_tolerance": 2.0,
+                    "humi_tolerance": 5.0,
+                    "reference": "IEC 60068-2-78:2012 Test Cab Method I",
+                    "steps": steps_single_temp(90.0, 16, "high"),
+                },
+                "Cab_90_24h_95RH": {
+                    "sop_id": "iec60068_cab_90_24h_95rh",
+                    "name": "穩態高溫高濕 Test Cab：90°C，24h，95%RH（寬溫，Method II）",
+                    "test_type": "chamber",
+                    "version": "IEC 60068-2-78:2012",
+                    "description": "Test Cab Method II：寬溫產品（額定最高工作溫度 + 5°C = 90°C），95%RH，24 小時穩態高溫高濕，通電。",
+                    "high_temperature": 90.0,
+                    "low_temperature": None,
+                    "target_temperature": 90.0,
+                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "dwell_time_hours": 24,
+                    "cycles": 1,
+                    "humidity_rh_percent": 95.0,
+                    "humidity_control": True,
+                    "power_on": True,
+                    "temp_tolerance": 2.0,
+                    "humi_tolerance": 5.0,
+                    "reference": "IEC 60068-2-78:2012 Test Cab Method II",
+                    "steps": steps_single_temp(90.0, 24, "high"),
                 },
             },
         },
