@@ -232,7 +232,7 @@ TREE = {
                     "high_temperature": 70.0,
                     "low_temperature": None,
                     "target_temperature": 70.0,
-                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "ramp_rate": 1.0,
                     "dwell_time_hours": 2,
                     "cycles": 1,
                     "humidity_rh_percent": None,
@@ -301,7 +301,7 @@ TREE = {
                     "high_temperature": 85.0,
                     "low_temperature": None,
                     "target_temperature": 85.0,
-                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "ramp_rate": 1.0,
                     "dwell_time_hours": 2,
                     "cycles": 1,
                     "humidity_rh_percent": None,
