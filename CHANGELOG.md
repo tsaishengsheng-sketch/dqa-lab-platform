@@ -5,19 +5,21 @@
 
 ## 2026-03-13
 
+**Standards 模組重構：standards.py → standards/ 套件**
 
-- 新增 standards/ 套件（8 個檔案）
-- _base.py：步驟工廠函數
-- 六個法規子模組：iec60068 / en50155 / iec61850 / dnv / kema / nmea
-- __init__.py：組裝 STANDARD_TREE，完全向後相容
-- 同步套用法規修正：
-  - IEC 60068-2-1 Ab_-25 新增（HQ-PD.486）
-  - Ad_-25 dwell 2h→48h，ramp 3→1，補 Power ON/OFF steps
-  - IEC 61850-3 全部 ramp 2→1（公司 SOP 確認）
-  - C2 冷測拆 Operational/Storage，C3 冷測改名+ramp 3
-  - DNV CG0339 ClassD duplicate sop_id 修正
-- sop_id 總數：64→67（新增 3 條）
-- sop.py / main.py import 路徑不變"
+後端
+
+- **refactor**: `backend/app/standards.py` 拆分為 `standards/` 套件，共 6 個檔案：
+  - `__init__.py`：組裝 STANDARD_TREE + 工具函數，向後相容 STANDARDS_AND_SOPS 平坦結構
+  - `_base.py`：steps_single_temp / steps_cycle 步驟工廠函數
+  - `iec60068.py`：IEC 60068-2-1/2/14/30（13 條）
+  - `en50155.py`：EN 50155:2017 + 2007（19 條）
+  - `iec61850.py`：IEC 61850-3 Ed.2:2013 + Ed.1:2002（10 條）
+  - `dnv.py`：DNV CG-0339:2015 + Std.Cert.2.4（14 條）
+- **chore**: KEMA / NMEA 暫時移除（無原始法規文件可供對照）
+- **fix**: DNV 條數修正 15 → 14
+- sop_id 總數：67 → 56（移除 KEMA 4 條、NMEA 7 條）
+- import 路徑不變，sop.py / main.py / reports.py 無需修改
 ---
 
 ## 2026-03-12
