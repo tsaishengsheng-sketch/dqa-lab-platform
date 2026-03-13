@@ -10,9 +10,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Mapped, mapped_column
 import datetime
+import os
 from typing import Optional
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+# 絕對路徑：不管從哪個目錄啟動，永遠指向 backend/test.db
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{BASE_DIR}/test.db"
+
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
@@ -47,7 +51,6 @@ class SopExecution(Base):
     sop_id: Mapped[str] = mapped_column(String, index=True)
     device_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     operator: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    # 修正：由 String 改為 DateTime，與 DeviceState.started_at 型別一致
     test_started_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime, nullable=True
     )
@@ -64,12 +67,10 @@ class StepRecord(Base):
     __tablename__ = "step_records"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    # 修正：加上 ForeignKey 約束，防止孤兒資料
     execution_id: Mapped[int] = mapped_column(
         ForeignKey("sop_executions.id"), index=True
     )
     step_id: Mapped[int] = mapped_column(Integer)
-    # 修正：改為 Boolean，語意更清晰
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
     parameters: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     photos: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -105,7 +106,6 @@ class DeviceState(Base):
     started_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime, nullable=True
     )
-    # 修正：加上 onupdate，UPDATE 時自動刷新時間戳
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
@@ -119,7 +119,7 @@ class ErrorLog(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     device_id: Mapped[str] = mapped_column(String, index=True)
-    error_type: Mapped[str] = mapped_column(String)  # EMERGENCY / SENSOR_ERROR 等
+    error_type: Mapped[str] = mapped_column(String)
     sop_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     sop_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
