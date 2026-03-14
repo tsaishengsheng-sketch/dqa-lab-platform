@@ -13,6 +13,22 @@
 
 ---
 
+## 2026-03-14（續二）
+
+**法規正確性審查：新建 IEC 60945:2002**
+
+- **feat**: 新建 `backend/app/standards/iec60945.py`，IEC 60945:2002 共 7 條：
+  - `Dry_Heat_Storage_+70`：+70°C / 16h / 非通電（Portable / Exposed）
+  - `Dry_Heat_Functional_+55`：+55°C / 16h / 通電（Portable / Protected / Exposed）
+  - `Damp_Heat_+40_93RH`：+40°C / 93%RH / 16h / 通電（Db variant 1）
+  - `Cold_Portable_-20_Functional`：-20°C / 16h / 通電（Portable）
+  - `Cold_Portable_-30_Storage`：-30°C / 16h / 非通電（Portable）
+  - `Cold_Protected_-15`：-15°C / 16h / 非通電（Protected）
+  - `Cold_Exposed_-25`：-25°C / 16h / 非通電（Exposed）
+- sop_id 總數：71 → 78
+
+---
+
 ## 2026-03-14（續）
 
 **法規正確性審查：IEC 61850-3 溫度循環與濕熱循環**
