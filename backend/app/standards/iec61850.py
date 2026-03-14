@@ -3,10 +3,10 @@ IEC 61850-3 變電站通訊自動化設備標準
 - Ed.2:2013（現行，Class C1/C2/C3）
 - Ed.1:2002（舊版）
 
-ramp_rate：✅ 公司 SOP 文件確認（方法驗證報告）：1°C/min
-  - C3 Cold（-40°C 寬溫）：3°C/min（公司 SOP 文件確認）
+ramp_rate：✅ ：1°C/min
+  - C3 Cold（-40°C 寬溫）：3°C/min
   - Ed.1 Cold（-40°C 寬溫）：3°C/min
-  - Cab 高溫高濕：1°C/min（公司 SOP 文件確認）
+  - Cab 高溫高濕：1°C/min
 
 冷測分類說明：
   - Operational（通電，Test Ad）：對應 HQ-PD.506
@@ -36,7 +36,7 @@ TREE = {
                     "high_temperature": 55.0,
                     "low_temperature": None,
                     "target_temperature": 55.0,
-                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "ramp_rate": 1.0,
                     "dwell_time_hours": 16,
                     "cycles": 1,
                     "humidity_rh_percent": None,
@@ -56,7 +56,7 @@ TREE = {
                     "high_temperature": None,
                     "low_temperature": -10.0,
                     "target_temperature": -10.0,
-                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "ramp_rate": 1.0,
                     "dwell_time_hours": 16,
                     "cycles": 1,
                     "humidity_rh_percent": None,
@@ -96,7 +96,7 @@ TREE = {
                     "high_temperature": 40.0,
                     "low_temperature": None,
                     "target_temperature": 40.0,
-                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "ramp_rate": 1.0,
                     "dwell_time_hours": 240,
                     "cycles": 1,
                     "humidity_rh_percent": 93.0,
@@ -136,7 +136,7 @@ TREE = {
                     "high_temperature": 70.0,
                     "low_temperature": None,
                     "target_temperature": 70.0,
-                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "ramp_rate": 1.0,
                     "dwell_time_hours": 16,
                     "cycles": 1,
                     "humidity_rh_percent": None,
@@ -156,7 +156,7 @@ TREE = {
                     "high_temperature": None,
                     "low_temperature": -25.0,
                     "target_temperature": -25.0,
-                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "ramp_rate": 1.0,
                     "dwell_time_hours": 16,
                     "cycles": 1,
                     "humidity_rh_percent": None,
@@ -176,7 +176,7 @@ TREE = {
                     "high_temperature": None,
                     "low_temperature": -25.0,
                     "target_temperature": -25.0,
-                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "ramp_rate": 1.0,
                     "dwell_time_hours": 16,
                     "cycles": 1,
                     "humidity_rh_percent": None,
@@ -196,7 +196,7 @@ TREE = {
                     "high_temperature": 40.0,
                     "low_temperature": None,
                     "target_temperature": 40.0,
-                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "ramp_rate": 1.0,
                     "dwell_time_hours": 240,
                     "cycles": 1,
                     "humidity_rh_percent": 93.0,
@@ -236,7 +236,7 @@ TREE = {
                     "high_temperature": 70.0,
                     "low_temperature": None,
                     "target_temperature": 70.0,
-                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "ramp_rate": 1.0,
                     "dwell_time_hours": 16,
                     "cycles": 1,
                     "humidity_rh_percent": None,
@@ -256,7 +256,7 @@ TREE = {
                     "high_temperature": None,
                     "low_temperature": -40.0,
                     "target_temperature": -40.0,
-                    "ramp_rate": 3.0,  # ✅ 寬溫（-40°C）：3°C/min（公司 SOP 文件確認）
+                    "ramp_rate": 3.0,  # ✅ 寬溫（-40°C）：3°C/min
                     "dwell_time_hours": 16,
                     "cycles": 1,
                     "humidity_rh_percent": None,
@@ -276,7 +276,7 @@ TREE = {
                     "high_temperature": 40.0,
                     "low_temperature": None,
                     "target_temperature": 40.0,
-                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "ramp_rate": 1.0,
                     "dwell_time_hours": 240,
                     "cycles": 1,
                     "humidity_rh_percent": 93.0,
@@ -322,7 +322,7 @@ TREE = {
                     "high_temperature": 70.0,
                     "low_temperature": None,
                     "target_temperature": 70.0,
-                    "ramp_rate": 1.0,  # ✅ 公司 SOP 文件確認：1°C/min
+                    "ramp_rate": 1.0,
                     "dwell_time_hours": 16,
                     "cycles": 1,
                     "humidity_rh_percent": None,
@@ -342,7 +342,7 @@ TREE = {
                     "high_temperature": None,
                     "low_temperature": -40.0,
                     "target_temperature": -40.0,
-                    "ramp_rate": 3.0,  # ✅ 寬溫（-40°C）：3°C/min（公司 SOP 文件確認）
+                    "ramp_rate": 3.0,  # ✅ 寬溫（-40°C）：3°C/min）
                     "dwell_time_hours": 16,
                     "cycles": 1,
                     "humidity_rh_percent": None,

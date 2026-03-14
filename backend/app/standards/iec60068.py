@@ -31,11 +31,11 @@ TREE = {
                     "name": "低溫儲存 Test Ab：-25°C，16 小時（非通電）",
                     "test_type": "chamber",
                     "version": "IEC 60068-2-1:2007",
-                    "description": "Test Ab 標溫等級：非通電狀態，-25°C 低溫儲存 16 小時，評估標溫產品耐受性。",
+                    "description": "Test Ab 標溫等級：非通電狀態，-25°C 低溫儲存 16 小時，評估標溫產品耐受性",
                     "high_temperature": None,
                     "low_temperature": -25.0,
                     "target_temperature": -25.0,
-                    "ramp_rate": 1.0,  # ✅ 標溫（-25°C）：1°C/min
+                    "ramp_rate": 1.0,  # ✅ 標溫（-25°C）：
                     "dwell_time_hours": 16,
                     "cycles": 1,
                     "humidity_rh_percent": None,
@@ -55,7 +55,7 @@ TREE = {
                     "high_temperature": None,
                     "low_temperature": -40.0,
                     "target_temperature": -40.0,
-                    "ramp_rate": 3.0,  # ✅ 寬溫（-40°C）：3°C/min
+                    "ramp_rate": 3.0,  # ✅ 寬溫（-40°C）：3°C/min（
                     "dwell_time_hours": 16,
                     "cycles": 1,
                     "humidity_rh_percent": None,
@@ -75,7 +75,8 @@ TREE = {
                     "high_temperature": None,
                     "low_temperature": -55.0,
                     "target_temperature": -55.0,
-                    "ramp_rate": 3.0,  # ✅ 寬溫以上（-55°C）：3°C/min                    "dwell_time_hours": 16,
+                    "ramp_rate": 3.0,  # ✅ 寬溫以上（-55°C）：3°C/min
+                    "dwell_time_hours": 16,
                     "cycles": 1,
                     "humidity_rh_percent": None,
                     "humidity_control": False,
@@ -90,11 +91,11 @@ TREE = {
                     "name": "低溫工作 Test Ad：-25°C，48 小時（通電，含 Power ON/OFF 循環）",
                     "test_type": "chamber",
                     "version": "IEC 60068-2-1:2007",
-                    "description": "Test Ad 標溫工作：通電狀態，-25°C 停留 48 小時，含 10 次 Power ON/OFF 循環（5 min OFF / 2 hr ON）。",
+                    "description": "Test Ad 標溫工作：通電狀態，-25°C 停留 48 小時，含 10 次 Power ON/OFF 循環（5 min OFF / 2 hr ON）",
                     "high_temperature": None,
                     "low_temperature": -25.0,
                     "target_temperature": -25.0,
-                    "ramp_rate": 1.0,  # ✅ 標溫（-25°C）：1°C/min
+                    "ramp_rate": 1.0,  # ✅ 標溫（-25°C）
                     "dwell_time_hours": 48,
                     "cycles": 1,
                     "humidity_rh_percent": None,
@@ -102,7 +103,7 @@ TREE = {
                     "power_on": True,
                     "temp_tolerance": 2.0,
                     "humi_tolerance": 5.0,
-                    "reference": "IEC 60068-2-1:2007 Test Ad ",
+                    "reference": "IEC 60068-2-1:2007 Test Ad + HQ-PD.485",
                     "steps": [
                         {
                             "step_id": 1,
@@ -223,12 +224,12 @@ TREE = {
                     "name": "Test Nb 漸進溫度循環：-40°C ↔ +85°C，2°C/min，5 循環",
                     "test_type": "chamber",
                     "version": "IEC 60068-2-14:2023",
-                    "description": "Test Nb：單腔體線性速率升降溫，2°C/min，每端停留 60 分鐘，5 循環。最常用的工業標準溫度循環。",
+                    "description": "Test Nb：單腔體線性速率升降溫，2°C/min，每端停留 2 小時，5 循環。最常用的工業標準溫度循環。",
                     "high_temperature": 85.0,
                     "low_temperature": -40.0,
                     "target_temperature": 85.0,
                     "ramp_rate": 2.0,  # ✅ 法規明文允許範圍 1~15°C/min，此為慣用值
-                    "dwell_time_hours": 1,
+                    "dwell_time_hours": 2,
                     "cycles": 5,
                     "humidity_rh_percent": None,
                     "humidity_control": False,
@@ -243,12 +244,12 @@ TREE = {
                     "name": "Test Nb 漸進溫度循環：-25°C ↔ +70°C，2°C/min，3 循環",
                     "test_type": "chamber",
                     "version": "IEC 60068-2-14:2023",
-                    "description": "Test Nb 溫和等級：單腔體線性速率升降溫，適用於辦公室/工業溫帶環境設備。",
+                    "description": "Test Nb 溫和等級：單腔體線性速率升降溫，每端停留 2 小時，適用於辦公室/工業溫帶環境設備。",
                     "high_temperature": 70.0,
                     "low_temperature": -25.0,
                     "target_temperature": 70.0,
                     "ramp_rate": 2.0,  # ✅ 法規明文允許範圍 1~15°C/min，此為慣用值
-                    "dwell_time_hours": 1,
+                    "dwell_time_hours": 2,
                     "cycles": 3,
                     "humidity_rh_percent": None,
                     "humidity_control": False,
