@@ -8,24 +8,19 @@ export default function AIPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const {
-    // store
     activeId,
     conversations,
     projectGroups,
-    // active conversation
     messages,
-    // ui state
     input,
     loading,
     streamText,
     suggestions,
     suggestLoading,
-    // refs
     bottomRef,
     chatAreaRef,
     inputRef,
     textareaRef,
-    // multi-conv ops
     switchConversation,
     addConversation,
     deleteConversation,
@@ -33,7 +28,6 @@ export default function AIPage() {
     setConversationGroup,
     addProjectGroup,
     clearConversation,
-    // chat ops
     sendMessage,
     stopStream,
     retryInTraditional,
@@ -82,6 +76,7 @@ export default function AIPage() {
 const S = {
   page: {
     display: "flex",
+    flex: 1,
     height: "100%",
     backgroundColor: "#0d1117",
     color: "#cdd9e5",
