@@ -103,7 +103,11 @@ function App() {
           <ErrorLog />
         </div>
         <div
-          style={{ display: page === "/ai" ? "block" : "none", height: "100%" }}
+          style={{
+            display: page === "/ai" ? "flex" : "none",
+            flexDirection: "column",
+            height: "100%",
+          }}
         >
           <AIPage />
         </div>
