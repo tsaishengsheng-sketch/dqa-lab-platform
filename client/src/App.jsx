@@ -80,11 +80,11 @@ function App() {
           position: "relative",
         }}
       >
-        {/* 四個頁面永遠存在 DOM，切換只改 display，不重新 mount */}
+        {/* fix: 傳入 active prop，讓各頁面在隱藏時暫停輪詢 */}
         <div
           style={{ display: page === "/" ? "block" : "none", height: "100%" }}
         >
-          <Dashboard />
+          <Dashboard active={page === "/"} />
         </div>
         <div
           style={{
@@ -92,7 +92,7 @@ function App() {
             height: "100%",
           }}
         >
-          <SOPPage />
+          <SOPPage active={page === "/sop"} />
         </div>
         <div
           style={{
