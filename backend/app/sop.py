@@ -28,7 +28,7 @@ class SopResponse(BaseModel):
 
 @router.get("/standards/tree")
 def get_standards_tree():
-    """完整三層標準樹：法規 → 版本 → 測試條件"""
+    """完整三層標準樹：法規 → 版本 → 測試條件（不含 steps 欄位，節省傳輸量）"""
     tree = get_standard_tree()
     result = {}
     for std_key, std_data in tree.items():
@@ -60,6 +60,8 @@ def get_standards_tree():
                     "reference": test_data.get("reference", ""),
                     "temp_tolerance": test_data.get("temp_tolerance", 2.0),
                     "humi_tolerance": test_data.get("humi_tolerance", 5.0),
+                    # fix: 一併回傳 steps，前端啟動時不需再打 /api/sop/ 取得步驟
+                    "steps": test_data.get("steps", []),
                 }
     return result
 
@@ -127,7 +129,6 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
     std_data = STANDARDS_AND_SOPS.get(sop_id, {})
     sop_name = std_data.get("name", sop_id)
 
-    # 若 standards.py 找不到，查 DB 自訂 SOP
     if sop_name == sop_id:
         with SessionLocal() as db:
             sop = db.query(SopTemplate).filter(SopTemplate.sop_id == sop_id).first()
@@ -138,7 +139,6 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
     active_sop_data = {**std_data, "sop_id": sop_id, "name": sop_name}
     active_sop_json = json.dumps(active_sop_data, ensure_ascii=False)
 
-    # 更新 in-memory cache
     device.update(
         {
             "status": "RUNNING",
@@ -148,25 +148,14 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
             "active_sop_json": active_sop_json,
             "completed_steps": 0,
             "started_at": now,
-            "total_steps": len(std_data.get("steps", [])),  # fix: Dashboard 進度條需要此值
+            "total_steps": len(std_data.get("steps", [])),
         }
     )
 
-    # 持久化到 DB
-    with SessionLocal() as db:
-        state = db.get(DeviceState, device_id)
-        if state is None:
-            state = DeviceState(device_id=device_id)
-            db.add(state)
-        state.status = "RUNNING"
-        state.running_sop_id = sop_id
-        state.running_sop_name = sop_name
-        state.standard_id = sop_id
-        state.active_sop_json = active_sop_json
-        state.completed_steps = 0
-        state.started_at = now
-        state.updated_at = now
-        db.commit()
+    # fix: 統一使用 _save_device_state，移除重複的手動 DB 寫入邏輯
+    from .main import _save_device_state
+
+    _save_device_state(device_id, device)
 
     print(f"🔥 [{device_id}] Started SOP: {sop_id} ({sop_name})")
     return {"status": "success", "message": f"{device_id} 已啟動 {sop_name}"}
@@ -213,7 +202,7 @@ def create_execution(data: ExecutionCreate):
             test_ended_at=data.test_ended_at,
         )
         db.add(execution)
-        db.flush()  # 取得 execution.id，但尚未 commit
+        db.flush()
 
         records = []
         for step in data.steps:
