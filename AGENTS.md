@@ -83,9 +83,10 @@
 1. **法規正確性審查**（✅ 完成）— IEC 60068、EN 50155、IEC 61850-3、IEC 60945、DNV 全部審查完畢
 2. **AI 諮詢 UI 改版**（✅ 完成）— 多對話管理、專案分組，詳見下方規劃段落
 3. **AI 諮詢模組 bug 修正**（✅ 完成）— 分組管理、串流狀態、簡體偵測、Dashboard 歷史陣列凍結問題全部修正
-4. **AI 治具管理助手**（`/api/ai/fixture-recommend`）
-5. **AI 設備排程預估**（`/api/ai/schedule-estimate`）
-6. **Phase 3**：多台設備架構、治具資料庫、認證系統、RS-485 真實通訊
+4. **後端與前端系統性優化**（✅ 完成）— ai.py 雙重前綴、sop.py 重複 DB 寫入、main.py 時區偏移與低溫預估計算、SOPPage 防重複提交與輪詢優化、App.jsx 隱藏頁面暫停輪詢、models.py composite index、reports.py 記憶體上限
+5. **AI 治具管理助手**（`/api/ai/fixture-recommend`）
+6. **AI 設備排程預估**（`/api/ai/schedule-estimate`）
+7. **Phase 3**：多台設備架構、治具資料庫、認證系統、RS-485 真實通訊
 
 ### 環境測試標準模組（standards/）
 

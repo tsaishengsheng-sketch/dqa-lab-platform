@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-03-15（續）
+
+**後端系統性優化**
+
+- **fix**: `ai.py` 移除後端重複 `TC_PREFIX`，前端已附加，後端不再加，避免雙重前綴
+- **fix**: `sop.py` `start_sop` 改用 `_save_device_state` 統一寫 DB，移除重複手動寫入邏輯
+- **fix**: `sop.py` `get_standards_tree` 補回 `steps` 欄位，前端啟動 SOP 不需再打第二次 `/api/sop/`
+- **fix**: `main.py` `get_device_history` 時區處理：`started_at` 統一轉為 UTC naive datetime 再與 DB 比對，修正時區偏移導致查詢區間錯誤
+- **fix**: `main.py` `lifespan` 恢復狀態時 `started_at` 統一轉為 UTC aware datetime，確保型別一致
+- **fix**: `main.py` `_calc_estimated_end_at` 低溫測試預估結束時間計算錯誤（原本固定從 25°C 出發，現在正確處理低溫段先降溫的路徑）
+- **fix**: `main.py` `data_simulator` `PAUSED` 狀態不再累積 `write_counters` 寫 DB，避免浪費 IO
+- **fix**: `models.py` `DeviceData` 加入 composite index `(device_id, timestamp)`，修正大量資料時全表掃描問題
+- **fix**: `models.py` `DeviceState.updated_at` 移除無效的 `onupdate` lambda（SQLite 不觸發），改由 `_save_device_state` 手動更新
+- **fix**: `reports.py` `DeviceData` 查詢加入 `limit(10000)` 防止大量資料塞爆記憶體，截斷時報告標注警告
+
+**前端系統性優化**
+
+- **fix**: `App.jsx` 傳入 `active` prop 給 `Dashboard` 與 `SOPPage`，頁面隱藏時暫停輪詢，切回時重新啟動
+- **fix**: `Dashboard.jsx` `active` prop 控制 `setInterval`，隱藏時停止輪詢；歷史陣列改用展開運算子避免 React StrictMode 凍結
+- **fix**: `SOPPage.jsx` `active` prop 控制輪詢；`saveExecution` 加防重複提交（`saving` state）；`startSop` 直接從 `standardTree` 取 `steps`，不再打第二次 `/api/sop/`；`isStepUnlocked` 改為迭代避免 O(n²) 遞迴
+
+---
+
 ## 2026-03-15
 
 **AI 諮詢 UI 改版 — 多對話管理**
