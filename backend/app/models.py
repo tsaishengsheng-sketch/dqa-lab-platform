@@ -7,13 +7,13 @@ from sqlalchemy import (
     Text,
     Boolean,
     ForeignKey,
+    Index,
 )
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Mapped, mapped_column
 import datetime
 import os
 from typing import Optional
 
-# 絕對路徑：不管從哪個目錄啟動，永遠指向 backend/test.db
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{BASE_DIR}/test.db"
 
@@ -89,6 +89,13 @@ class DeviceData(Base):
     humidity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     raw_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # fix: 加入 composite index (device_id, timestamp)
+    # reports.py 與 history API 都用 device_id + timestamp 範圍查詢
+    # 資料量大時避免全表掃描
+    __table_args__ = (
+        Index("ix_device_data_device_timestamp", "device_id", "timestamp"),
+    )
+
 
 # ---------- 設備狀態持久化 ----------
 class DeviceState(Base):
@@ -106,10 +113,10 @@ class DeviceState(Base):
     started_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime, nullable=True
     )
+    # fix: 移除無效的 onupdate lambda（SQLite 不觸發），改由 _save_device_state 手動更新
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
-        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
     )
 
 
