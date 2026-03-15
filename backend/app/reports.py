@@ -10,6 +10,8 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 REPORT_VERSION = "1.0"
 LAB_NAME = "DQA Lab - KSON AICM Digital Twin"
+# fix: 限制單次查詢最大筆數，避免長時間測試資料塞爆記憶體
+MAX_DATA_POINTS = 10000
 
 
 def _write(output: io.BytesIO, text: str):
@@ -28,7 +30,6 @@ def _row(output: io.BytesIO, label: str, value):
 
 
 def _fmt_dt(dt) -> str:
-    """安全格式化 datetime，支援 datetime 物件與 None"""
     if dt is None:
         return "N/A"
     if isinstance(dt, datetime.datetime):
@@ -59,11 +60,11 @@ def download_csv_report(execution_id: int):
             .all()
         )
 
-        # §7.5.2：依實際測試開始/結束時間查詢原始數據
-        # 若無記錄則回報缺失，不使用模糊備用區間
         device_records = []
+        truncated = False
         if execution.test_started_at and execution.test_ended_at:
             device_id_filter = execution.device_id or "KSON_CH01"
+            # fix: 加入 limit 防止大量資料塞爆記憶體
             device_records = (
                 db.query(DeviceData)
                 .filter(
@@ -72,17 +73,18 @@ def download_csv_report(execution_id: int):
                     DeviceData.timestamp <= execution.test_ended_at,
                 )
                 .order_by(DeviceData.timestamp)
+                .limit(MAX_DATA_POINTS)
                 .all()
             )
+            # 若筆數達上限，標注報告已截斷
+            truncated = len(device_records) == MAX_DATA_POINTS
         else:
             device_id_filter = execution.device_id or "KSON_CH01"
 
-        # 修正：直接用 sop_id 查，不需迴圈比對
         sop_data = STANDARDS_AND_SOPS.get(execution.sop_id, {})
         temp_tolerance = sop_data.get("temp_tolerance", 2.0)
         humi_tolerance = sop_data.get("humi_tolerance", 5.0)
 
-        # 統計溫濕度數據
         temps = [r.temperature for r in device_records if r.temperature is not None]
         humis = [r.humidity for r in device_records if r.humidity is not None]
 
@@ -96,7 +98,6 @@ def download_csv_report(execution_id: int):
         )
         target_low = sop_data.get("low_temperature")
 
-        # 產生報告
         output = io.BytesIO()
         report_no = f"RPT-{execution.created_at.strftime('%Y%m%d')}-{execution_id:03d}"
 
@@ -132,12 +133,10 @@ def download_csv_report(execution_id: int):
         _row(output, "目標高溫 Target High (C):", target_high or "N/A")
         _row(output, "目標低溫 Target Low (C):", target_low or "N/A")
         _row(output, "升降溫速率 Ramp Rate (C/min):", sop_data.get("ramp_rate", "N/A"))
-        # 修正：key 名稱由 dwell_time 改為 dwell_time_hours
         _row(
             output, "停留時間 Dwell Time (h):", sop_data.get("dwell_time_hours", "N/A")
         )
         _row(output, "循環次數 Cycles:", sop_data.get("cycles", "N/A"))
-        # 修正：key 名稱由 humidity 改為 humidity_rh_percent
         _row(
             output,
             "濕度設定 Humidity (%RH):",
@@ -151,7 +150,9 @@ def download_csv_report(execution_id: int):
         _row(
             output,
             "數據筆數 Data Points:",
-            len(device_records) if execution.test_started_at else "測試時間未記錄",
+            f"{len(device_records)}{' (已截斷，上限 ' + str(MAX_DATA_POINTS) + ' 筆)' if truncated else ''}"
+            if execution.test_started_at
+            else "測試時間未記錄",
         )
 
         # 4. 步驟執行記錄（§7.5.1 責任人與日期）
@@ -193,6 +194,11 @@ def download_csv_report(execution_id: int):
 
         # 7. 原始數據（§7.5.1 原始觀察結果）
         _section(output, "7. 原始溫濕度數據  Raw Temperature & Humidity Data")
+        if truncated:
+            _write(
+                output,
+                f"  ⚠️ 資料量超過上限（{MAX_DATA_POINTS} 筆），僅顯示前 {MAX_DATA_POINTS} 筆原始數據。",
+            )
         if not device_records:
             _write(output, "  (測試時間未記錄或無原始數據)")
         else:
@@ -220,7 +226,6 @@ def download_csv_report(execution_id: int):
 
         output.seek(0)
         filename = f"{report_no}_{execution.sop_id}.csv"
-        # 修正：RFC 5987 編碼，支援非 ASCII 檔名
         encoded_filename = urllib.parse.quote(filename)
 
         return StreamingResponse(
@@ -234,7 +239,6 @@ def download_csv_report(execution_id: int):
 
 @router.get("/list")
 def list_executions():
-    """取得所有執行紀錄列表"""
     with SessionLocal() as db:
         executions = (
             db.query(SopExecution).order_by(SopExecution.created_at.desc()).all()
