@@ -97,7 +97,6 @@ function generateSP(sop) {
   return pts.map((p) => ({
     ...p,
     sp_temp: Math.round(p.sp_temp * 10) / 10,
-    // 溫度低於 0°C 時無法控濕，sp_humi 設為 null
     sp_humi: p.sp_temp < 0 ? null : humiVal,
     label: fmtMin(p.min),
   }));
@@ -455,7 +454,8 @@ const TempChart = ({ sop, pvData, startedAt }) => {
   );
 };
 
-const SOPPage = () => {
+// fix: 加入 active prop，頁面隱藏時暫停輪詢
+const SOPPage = ({ active = true }) => {
   const [selectedDevice, setSelectedDevice] = useState("KSON_CH01");
   const [allDevices, setAllDevices] = useState({});
   const [deviceStates, setDeviceStates] = useState(() =>
@@ -463,10 +463,11 @@ const SOPPage = () => {
   );
   const [emergencyFlash, setEmergencyFlash] = useState(false);
   const [standardTree, setStandardTree] = useState({});
-  const [treeLoaded, setTreeLoaded] = useState(false); // 標準樹是否已載入完成
-  const [startError, setStartError] = useState(""); // 啟動錯誤訊息（取代 alert）
+  const [treeLoaded, setTreeLoaded] = useState(false);
+  const [startError, setStartError] = useState("");
+  // fix: 防重複提交 saving state
+  const [saving, setSaving] = useState(false);
 
-  // 防止整分鐘補撈 history 重複觸發（3秒輪詢下仍可能在同一分鐘觸發多次）
   const lastHistoryMinuteRef = useRef(-1);
 
   const data = allDevices[selectedDevice] || {
@@ -524,13 +525,13 @@ const SOPPage = () => {
         setStandardTree(r.data);
         setTreeLoaded(true);
       })
-      .catch((e) => {
-        console.error("[SOPPage] standards tree:", e);
-        setTreeLoaded(true); // 即使失敗也結束 loading，不卡死畫面
-      });
+      .catch(() => setTreeLoaded(true));
   }, []);
 
+  // fix: active 為 false 時不啟動 interval
   useEffect(() => {
+    if (!active) return;
+
     const t = setInterval(() => {
       axios
         .get(`${API}/api/devices`)
@@ -552,11 +553,6 @@ const SOPPage = () => {
               if (!restoredSop && current.active_sop_json) {
                 try {
                   const parsed = JSON.parse(current.active_sop_json);
-                  if (!parsed.steps || parsed.steps.length === 0) {
-                    console.warn(
-                      "[SOPPage] active_sop_json 沒有 steps，請確認後端 SOP 資料完整性",
-                    );
-                  }
                   restoredSop = parsed;
                 } catch {
                   /* ignore */
@@ -574,7 +570,6 @@ const SOPPage = () => {
             return next;
           });
 
-          // 整分時補撈 history，用 lastHistoryMinuteRef 確保每分鐘只打一次
           const now = new Date();
           const currentMinute = now.getHours() * 60 + now.getMinutes();
           if (
@@ -601,9 +596,9 @@ const SOPPage = () => {
           }
         })
         .catch(() => {});
-    }, 3000); // ← 改為 3 秒，原本 1 秒
+    }, 3000);
     return () => clearInterval(t);
-  }, [selectedDevice]);
+  }, [selectedDevice, active]);
 
   const startedAt = allDevices[selectedDevice]?.started_at;
   useEffect(() => {
@@ -635,11 +630,14 @@ const SOPPage = () => {
 
   const steps = ds.activeSop?.steps || [];
 
+  // fix: isStepUnlocked 改為迭代，避免 O(n²) 遞迴
   const isStepUnlocked = (stepIndex) => {
-    if (stepIndex === 0) return true;
-    const prevStep = steps[stepIndex - 1];
-    if (prevStep.optional) return isStepUnlocked(stepIndex - 1);
-    return !!ds.completedSteps[prevStep.step_id];
+    for (let i = stepIndex - 1; i >= 0; i--) {
+      if (!steps[i].optional) {
+        return !!ds.completedSteps[steps[i].step_id];
+      }
+    }
+    return true;
   };
 
   const toggleStep = async (stepId, stepIndex) => {
@@ -660,6 +658,7 @@ const SOPPage = () => {
     }
   };
 
+  // fix: 直接從 standardTree 取 steps，不再打第二次 /api/sop/
   const startSop = async () => {
     if (!testData) return;
     setStartError("");
@@ -668,17 +667,8 @@ const SOPPage = () => {
         sop_id: testData.sop_id,
         device_id: selectedDevice,
       });
-      let steps = [];
-      try {
-        const sopList = await axios.get(`${API}/api/sop/`);
-        const full = sopList.data.find((s) => s.sop_id === testData.sop_id);
-        if (full && Array.isArray(full.steps) && full.steps.length > 0)
-          steps = full.steps;
-      } catch {
-        /* 備案 */
-      }
+      const steps = testData.steps || [];
       if (steps.length === 0) {
-        console.warn("[SOPPage] 後端沒有回傳 steps，請確認 SOP 資料完整性");
         setStartError("⚠️ SOP 步驟資料不完整，請確認後端 SOP 設定後重試。");
         return;
       }
@@ -710,7 +700,10 @@ const SOPPage = () => {
     }
   };
 
+  // fix: 防重複提交
   const saveExecution = async () => {
+    if (saving) return;
+    setSaving(true);
     try {
       const stepPayload = ds.activeSop.steps.map((s) => ({
         step_id: s.step_id,
@@ -726,6 +719,8 @@ const SOPPage = () => {
       updateDS(selectedDevice, { savedExecutionId: res.data.id });
     } catch {
       setStartError("❌ 儲存失敗，請確認後端連線。");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1096,20 +1091,22 @@ const SOPPage = () => {
               {allStepsDone && !ds.savedExecutionId && (
                 <button
                   onClick={saveExecution}
+                  disabled={saving}
                   style={{
                     marginTop: 12,
                     width: "100%",
                     padding: "10px",
-                    background: "#238636",
-                    color: "#fff",
+                    background: saving ? "#21262d" : "#238636",
+                    color: saving ? "#484f58" : "#fff",
                     border: "none",
                     borderRadius: 6,
-                    cursor: "pointer",
+                    cursor: saving ? "not-allowed" : "pointer",
                     fontWeight: 700,
                     fontSize: 14,
+                    opacity: saving ? 0.6 : 1,
                   }}
                 >
-                  💾 儲存執行紀錄
+                  {saving ? "⏳ 儲存中..." : "💾 儲存執行紀錄"}
                 </button>
               )}
               {ds.savedExecutionId && (
