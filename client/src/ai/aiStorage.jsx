@@ -1,13 +1,13 @@
-// client/src/ai/aiStorage.js
+// client/src/ai/aiStorage.jsx
 const STORAGE_KEY = "dqa_ai_chats_v2";
-const LEGACY_KEY = "dqa_ai_chat_history"; // 舊 key，遷移後刪除
+const LEGACY_KEY = "dqa_ai_chat_history";
 
 export const genId = () =>
   `conv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
 export const createConversation = ({
   title = "新對話",
-  projectGroup = "未分類",
+  projectGroup = "未分組",
 } = {}) => ({
   id: genId(),
   title,
@@ -20,7 +20,7 @@ export const createConversation = ({
 const emptyStore = () => ({
   activeConversationId: null,
   conversations: {},
-  projectGroups: ["未分類"],
+  projectGroups: ["未分組"],
 });
 
 const titleFrom = (messages) => {
@@ -29,13 +29,11 @@ const titleFrom = (messages) => {
   return first.content.slice(0, 20) + (first.content.length > 20 ? "…" : "");
 };
 
-/** 一次性遷移舊單對話格式 { version, messages } → 新格式 */
 const migrate = (store) => {
   try {
     const raw = localStorage.getItem(LEGACY_KEY);
     if (!raw) return store;
     const parsed = JSON.parse(raw);
-    // 相容兩種舊格式：純陣列 或 { version, messages }
     const msgs = Array.isArray(parsed) ? parsed : parsed?.messages;
     if (!Array.isArray(msgs) || msgs.length === 0) {
       localStorage.removeItem(LEGACY_KEY);
@@ -43,7 +41,7 @@ const migrate = (store) => {
     }
     const conv = createConversation({
       title: titleFrom(msgs),
-      projectGroup: "未分類",
+      projectGroup: "未分組",
     });
     conv.messages = msgs;
     store.conversations[conv.id] = conv;
@@ -65,7 +63,31 @@ export const loadChats = () => {
   }
 
   if (!store) store = emptyStore();
+
+  // 確保「未分組」永遠存在
+  if (!store.projectGroups) store.projectGroups = ["未分組"];
+  if (!store.projectGroups.includes("未分組"))
+    store.projectGroups = ["未分組", ...store.projectGroups];
+
+  // 舊資料遷移：把「未分類」替換為「未分組」
+  if (store.projectGroups.includes("未分類")) {
+    store.projectGroups = store.projectGroups.map((g) =>
+      g === "未分類" ? "未分組" : g,
+    );
+    Object.values(store.conversations ?? {}).forEach((c) => {
+      if (c.projectGroup === "未分類") c.projectGroup = "未分組";
+    });
+  }
+
   store = migrate(store);
+
+  // ✅ 修正：掃描所有對話的 projectGroup，若不在 projectGroups 陣列就補進去
+  // 避免對話的分組標籤孤立、導致 ChatSidebar 層級結構跑掉
+  Object.values(store.conversations ?? {}).forEach((c) => {
+    if (c.projectGroup && !store.projectGroups.includes(c.projectGroup)) {
+      store.projectGroups.push(c.projectGroup);
+    }
+  });
 
   if (Object.keys(store.conversations).length === 0) {
     const conv = createConversation();
@@ -97,6 +119,16 @@ export const deleteConversation = (store, id) => {
     )[0];
     next.activeConversationId = latest.id;
   }
+
+  // 清除已無對話的空分組（「未分組」永遠保留）
+  const usedGroups = new Set(
+    Object.values(next.conversations).map((c) => c.projectGroup),
+  );
+  next.projectGroups = [
+    "未分組",
+    ...next.projectGroups.filter((g) => g !== "未分組" && usedGroups.has(g)),
+  ];
+
   return next;
 };
 

@@ -23,15 +23,24 @@ export default function ChatSidebar({
   const [newGroupInput, setNewGroupInput] = useState("");
   const [showGroupInput, setShowGroupInput] = useState(false);
 
-  const grouped = projectGroups.reduce((acc, g) => {
+  // 收集所有對話實際用到的分組（含孤立分組）
+  const allGroupsInUse = [
+    ...new Set(Object.values(conversations).map((c) => c.projectGroup)),
+  ];
+
+  // 合併 projectGroups 陣列與實際用到的分組，確保無孤立對話被遺漏
+  const allGroups = [...new Set([...projectGroups, ...allGroupsInUse])];
+
+  // 依分組聚合對話
+  const grouped = allGroups.reduce((acc, g) => {
     acc[g] = Object.values(conversations)
       .filter((c) => c.projectGroup === g)
       .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
     return acc;
   }, {});
-  Object.values(conversations).forEach((c) => {
-    if (!projectGroups.includes(c.projectGroup)) grouped["未分類"].push(c);
-  });
+
+  // 排序：「未分組」永遠最後
+  const sortedGroups = [...allGroups.filter((g) => g !== "未分組"), "未分組"];
 
   const commitRename = () => {
     if (editingTitle.trim()) onRename(editingId, editingTitle.trim());
@@ -83,12 +92,16 @@ export default function ChatSidebar({
           </button>
 
           <div style={S.listArea}>
-            {projectGroups.map((group) => {
+            {sortedGroups.map((group) => {
               const items = grouped[group] ?? [];
-              if (items.length === 0) return null;
+              // 「未分組」空的就不顯示；其他分組即使空也要顯示
+              if (group === "未分組" && items.length === 0) return null;
               return (
                 <div key={group}>
-                  <div style={S.groupLabel}>{group}</div>
+                  <div style={S.groupLabel}>
+                    {group}
+                    {items.length === 0 && <span style={S.emptyBadge}>空</span>}
+                  </div>
                   {items.map((conv) => {
                     const isActive = conv.id === activeId;
                     return (
@@ -248,7 +261,7 @@ const S = {
     flexDirection: "column",
     gap: 4,
     height: "100%",
-    overflowX: "hidden", // 只裁橫向，不裁縱向
+    overflowX: "hidden",
     transition: "width .2s ease, min-width .2s ease",
     flexShrink: 0,
   },
@@ -307,6 +320,16 @@ const S = {
     letterSpacing: "0.06em",
     textTransform: "uppercase",
     padding: "8px 4px 4px",
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+  },
+  emptyBadge: {
+    fontSize: 9,
+    color: "#484f58",
+    background: "#21262d",
+    borderRadius: 3,
+    padding: "1px 4px",
   },
   convItem: {
     display: "flex",
