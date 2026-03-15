@@ -26,6 +26,8 @@ export default function ChatArea({
   onInputChange,
   onKeyDown,
 }) {
+  // fix: 避免建議列閃爍——loading 中若有上一輪建議繼續顯示，直到 suggestLoading 接管
+  const showSuggestRow = !loading || suggestLoading;
   const currentQuestions = suggestions ?? DEFAULT_QUESTIONS;
   const isDynamic = suggestions !== null;
 
@@ -45,8 +47,13 @@ export default function ChatArea({
           </div>
         )}
 
+        {/* fix: 用 createdAt+index 組合 key，避免 index 作 key 的 diff 錯誤 */}
         {messages.map((m, i) => (
-          <MessageBubble key={i} m={m} onRetry={() => onRetry(i)} />
+          <MessageBubble
+            key={`${m.role}-${i}-${m.content.slice(0, 8)}`}
+            m={m}
+            onRetry={() => onRetry(i)}
+          />
         ))}
 
         {loading && streamText && (
@@ -72,8 +79,8 @@ export default function ChatArea({
         <div ref={bottomRef} />
       </div>
 
-      {/* ── 追問建議列 ── */}
-      {!loading && (
+      {/* ── 追問建議列：loading 結束後才顯示，避免閃爍 ── */}
+      {showSuggestRow && (
         <div style={S.suggestRow}>
           {suggestLoading ? (
             <div style={S.suggestLoadingWrap}>
@@ -230,7 +237,6 @@ const S = {
     display: "inline-block",
     animation: "dotBounce 1.2s infinite",
   },
-  // 追問建議列
   suggestRow: {
     display: "flex",
     gap: 6,
@@ -258,7 +264,6 @@ const S = {
     transition: "background .15s",
     flexShrink: 0,
   },
-  // 輸入區
   inputArea: {
     borderTop: "1px solid #30363d",
     padding: "16px 24px",

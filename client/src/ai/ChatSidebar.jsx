@@ -22,36 +22,32 @@ export default function ChatSidebar({
   const [editingTitle, setEditingTitle] = useState("");
   const [newGroupInput, setNewGroupInput] = useState("");
   const [showGroupInput, setShowGroupInput] = useState(false);
+  const [movingId, setMovingId] = useState(null);
 
-  // 收集所有對話實際用到的分組（含孤立分組）
-  const allGroupsInUse = [
-    ...new Set(Object.values(conversations).map((c) => c.projectGroup)),
+  // 以 projectGroups 為主，「未分組」永遠最後
+  const sortedGroups = [
+    ...projectGroups.filter((g) => g !== "未分組"),
+    "未分組",
   ];
 
-  // 合併 projectGroups 陣列與實際用到的分組，確保無孤立對話被遺漏
-  const allGroups = [...new Set([...projectGroups, ...allGroupsInUse])];
-
   // 依分組聚合對話
-  const grouped = allGroups.reduce((acc, g) => {
+  const grouped = sortedGroups.reduce((acc, g) => {
     acc[g] = Object.values(conversations)
       .filter((c) => c.projectGroup === g)
       .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
     return acc;
   }, {});
 
-  // 排序：「未分組」永遠最後
-  const sortedGroups = [...allGroups.filter((g) => g !== "未分組"), "未分組"];
-
   const commitRename = () => {
     if (editingTitle.trim()) onRename(editingId, editingTitle.trim());
     setEditingId(null);
   };
 
+  // fix: 先 addProjectGroup，再 addConversation 放入新分組
   const commitAddGroup = () => {
     const name = newGroupInput.trim();
     if (name) {
       onAddGroup(name);
-      // 同時在新分組建立一個新對話，避免空分組被自動清除
       onAdd({ projectGroup: name });
     }
     setNewGroupInput("");
@@ -98,7 +94,6 @@ export default function ChatSidebar({
           <div style={S.listArea}>
             {sortedGroups.map((group) => {
               const items = grouped[group] ?? [];
-              // 空分組一律不顯示
               if (items.length === 0) return null;
               return (
                 <div key={group}>
@@ -138,12 +133,41 @@ export default function ChatSidebar({
                               取消
                             </button>
                           </div>
+                        ) : movingId === conv.id ? (
+                          <div style={S.moveRow}>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: "#8b949e",
+                                flexShrink: 0,
+                              }}
+                            >
+                              移至：
+                            </span>
+                            <select
+                              style={S.moveSelect}
+                              defaultValue={conv.projectGroup}
+                              onChange={(e) => {
+                                onSetGroup(conv.id, e.target.value);
+                                setMovingId(null);
+                              }}
+                            >
+                              {sortedGroups.map((g) => (
+                                <option key={g} value={g}>
+                                  {g}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              style={S.confirmNo}
+                              onClick={() => setMovingId(null)}
+                            >
+                              取消
+                            </button>
+                          </div>
                         ) : (
                           <div
-                            style={{
-                              ...S.convItem,
-                              ...(isActive ? S.convItemActive : {}),
-                            }}
+                            style={isActive ? S.convItemActive : S.convItem}
                             onClick={() => onSwitch(conv.id)}
                             onMouseEnter={(e) => {
                               if (!isActive)
@@ -169,6 +193,16 @@ export default function ChatSidebar({
                                 }}
                               >
                                 ✏️
+                              </button>
+                              <button
+                                style={S.iconBtn}
+                                title="移動分組"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMovingId(conv.id);
+                                }}
+                              >
+                                📁
                               </button>
                               <button
                                 style={S.iconBtn}
@@ -321,16 +355,6 @@ const S = {
     letterSpacing: "0.06em",
     textTransform: "uppercase",
     padding: "8px 4px 4px",
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-  },
-  emptyBadge: {
-    fontSize: 9,
-    color: "#484f58",
-    background: "#21262d",
-    borderRadius: 3,
-    padding: "1px 4px",
   },
   convItem: {
     display: "flex",
@@ -343,9 +367,16 @@ const S = {
     gap: 4,
   },
   convItemActive: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "6px 8px 6px 6px",
+    borderRadius: 6,
+    cursor: "pointer",
+    transition: "background .15s",
+    gap: 4,
     background: "#21262d",
     borderLeft: "2px solid #58a6ff",
-    padding: "6px 8px 6px 6px",
   },
   convTitle: {
     fontSize: 12,
@@ -371,6 +402,24 @@ const S = {
     padding: "4px 8px",
     background: "#21262d",
     borderRadius: 6,
+  },
+  moveRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "4px 8px",
+    background: "#21262d",
+    borderRadius: 6,
+  },
+  moveSelect: {
+    flex: 1,
+    background: "#0d1117",
+    border: "1px solid #30363d",
+    borderRadius: 4,
+    color: "#cdd9e5",
+    fontSize: 11,
+    padding: "3px 6px",
+    outline: "none",
   },
   confirmText: { fontSize: 11, color: "#f85149", flex: 1 },
   confirmYes: {

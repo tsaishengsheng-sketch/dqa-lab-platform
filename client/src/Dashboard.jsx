@@ -306,12 +306,13 @@ const Dashboard = () => {
     axios
       .get(`${API}/api/devices/${selectedDevice}/history`)
       .then((r) => {
-        historyRef.current[selectedDevice] = r.data.map((p) => ({
-          time: p.time,
-          temperature: p.temperature,
-          // 歷史資料：溫度 < 0°C 的濕度點設為 null，圖表自動斷線
-          humidity: p.temperature < 0 ? null : p.humidity,
-        }));
+        historyRef.current[selectedDevice] = [
+          ...r.data.map((p) => ({
+            time: p.time,
+            temperature: p.temperature,
+            humidity: p.temperature < 0 ? null : p.humidity,
+          })),
+        ];
         setHistoryTick((t) => t + 1);
       })
       .catch((err) => console.error("[Dashboard] history fetch:", err));
@@ -329,15 +330,16 @@ const Dashboard = () => {
           lastMinuteRef.current = currentMinute;
           const label = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
           res.data.forEach((d) => {
-            const buf = historyRef.current[d.device_id];
-            if (buf) {
+            const existing = historyRef.current[d.device_id];
+            if (existing) {
+              const buf = [...existing];
               buf.push({
                 time: label,
                 temperature: d.temperature,
-                // 即時存點：溫度 < 0°C 的濕度存 null，不記錄無效數值
                 humidity: d.temperature < 0 ? null : d.humidity,
               });
               if (buf.length > 5760) buf.shift();
+              historyRef.current[d.device_id] = buf;
             }
           });
           setHistoryTick((t) => t + 1);
