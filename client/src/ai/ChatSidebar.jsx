@@ -17,20 +17,18 @@ export default function ChatSidebar({
   onAddGroup,
   onClear,
 }) {
-  const [deleteConfirm, setDeleteConfirm] = useState(null); // id 待確認刪除
-  const [editingId, setEditingId] = useState(null); // id 正在重新命名
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [newGroupInput, setNewGroupInput] = useState("");
   const [showGroupInput, setShowGroupInput] = useState(false);
 
-  // 依 projectGroup 分組，各組內以 updatedAt 倒序
   const grouped = projectGroups.reduce((acc, g) => {
     acc[g] = Object.values(conversations)
       .filter((c) => c.projectGroup === g)
       .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
     return acc;
   }, {});
-  // 不在已知分組的對話一律歸入「未分類」
   Object.values(conversations).forEach((c) => {
     if (!projectGroups.includes(c.projectGroup)) grouped["未分類"].push(c);
   });
@@ -42,9 +40,7 @@ export default function ChatSidebar({
 
   const commitAddGroup = () => {
     const name = newGroupInput.trim();
-    if (name) {
-      onAddGroup(name);
-    }
+    if (name) onAddGroup(name);
     setNewGroupInput("");
     setShowGroupInput(false);
   };
@@ -59,7 +55,6 @@ export default function ChatSidebar({
         minWidth: open ? 220 : 36,
       }}
     >
-      {/* ── Header ── */}
       <div style={S.header}>
         {open && <span style={S.headerTitle}>對話紀錄</span>}
         <button
@@ -73,7 +68,6 @@ export default function ChatSidebar({
 
       {open && (
         <>
-          {/* ── 新增對話 ── */}
           <button
             style={S.newBtn}
             onClick={() => onAdd()}
@@ -88,7 +82,6 @@ export default function ChatSidebar({
             ＋ 新對話
           </button>
 
-          {/* ── 對話列表（依分組）── */}
           <div style={S.listArea}>
             {projectGroups.map((group) => {
               const items = grouped[group] ?? [];
@@ -194,7 +187,6 @@ export default function ChatSidebar({
             })}
           </div>
 
-          {/* ── 新增分組 ── */}
           <div style={S.groupActions}>
             {showGroupInput ? (
               <div style={{ display: "flex", gap: 4 }}>
@@ -223,7 +215,6 @@ export default function ChatSidebar({
             )}
           </div>
 
-          {/* ── 清除目前對話 ── */}
           {activeConv?.messages?.length > 0 && (
             <button
               style={S.clearBtn}
@@ -257,7 +248,7 @@ const S = {
     flexDirection: "column",
     gap: 4,
     height: "100%",
-    overflow: "hidden",
+    overflowX: "hidden", // 只裁橫向，不裁縱向
     transition: "width .2s ease, min-width .2s ease",
     flexShrink: 0,
   },
@@ -267,6 +258,7 @@ const S = {
     justifyContent: "space-between",
     marginBottom: 8,
     minHeight: 28,
+    flexShrink: 0,
   },
   headerTitle: {
     fontSize: 11,
@@ -297,11 +289,13 @@ const S = {
     width: "100%",
     transition: "background .15s",
     marginBottom: 8,
+    flexShrink: 0,
   },
   listArea: {
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
+    overflowX: "hidden",
     display: "flex",
     flexDirection: "column",
     gap: 2,
