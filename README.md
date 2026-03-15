@@ -104,9 +104,10 @@ AI：Ollama（本機）、qwen2.5:7b
 
 ## 延伸文件
 
-- [系統架構與開發進度](./docs/architecture.md)
+- [AI Agent 開發規範與專案背景](./AGENTS.md)
 - [更新紀錄](./CHANGELOG.md)
 - [QA 測試報告模板](./docs/templates/QA_Test_Report_Template.docx)
+
 
 ## 授權
 

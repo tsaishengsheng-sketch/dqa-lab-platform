@@ -13,6 +13,17 @@
 
 ---
 
+## 2026-03-14（續三）
+
+**法規正確性審查：__init__.py 整合 IEC 60945**
+
+- **feat**: `__init__.py` 加入 `iec60945` import 與 STANDARD_TREE 註冊
+- **docs**: 更新 `__init__.py` docstring（四個→五個子模組、新增 IEC 60945 說明）
+- **docs**: README 延伸文件區塊移除已刪除的 `architecture.md`，改為 `AGENTS.md`
+- **docs**: AGENTS.md 目錄結構補入 `iec60945.py`
+
+---
+
 ## 2026-03-14（續二）
 
 **法規正確性審查：新建 IEC 60945:2002**
