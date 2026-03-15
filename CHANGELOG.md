@@ -10,6 +10,12 @@
 
 - **refactor**: 移除 `AGENTS.md` 與 README 重複的 API 端點表格
 - **docs**: 修正法規審查狀態，DNV 待審查
+**法規正確性審查：DNV DNVGL-CG-0339:2015 修正**
+
+- **fix**: `dnv.py` ClassA Damp Heat `power_on` False → True（法規 Sec.3[8.2.5] 測試期間通電）
+- **fix**: `dnv.py` ClassA Damp Heat `humi_tolerance` 10.0 → 3.0（法規 Sec.3[8.6] 明文 +2%/-3%）
+- **fix**: `dnv.py` ClassB Dry Heat name/description 修正（「泵室」→「箱體內部，temp rise ≥5°C」）
+- DNV 法規審查完成，條數維持 14 條不變
 
 ---
 
