@@ -2,14 +2,23 @@
 
 所有版本修改紀錄集中於此，依日期倒序排列。
 
+
 ---
 
 ## 2026-03-15
 
+**AI 諮詢效能優化**
+
+- **perf**: `ai.py` system prompt 移除詳細參數，只保留測試條件名稱，token 數從約 2500 降至約 800
+- **perf**: `main.py` lifespan 加入 Ollama warm-up，解決第一次對話冷啟動不串流問題
+- **fix**: `AIPage.jsx` 移除 resetBtn（功能與清除對話重複）
+- **perf**: `AIPage.jsx` generateSuggestions 加 3s 延遲避免搶佔 Ollama 資源，history 從 6 則縮至 2 則
+- **fix**: `AIPage.jsx` 空白頁面條數更新：6 大法規 64 條 → 5 大法規 78 條
+
 **文件精簡**
 
 - **refactor**: 移除 `AGENTS.md` 與 README 重複的 API 端點表格
-- **docs**: 修正法規審查狀態，DNV 待審查
+- **docs**: 修正法規審查狀態，DNV 待審查 
 **法規正確性審查：DNV DNVGL-CG-0339:2015 修正**
 
 - **fix**: `dnv.py` ClassA Damp Heat `power_on` False → True（法規 Sec.3[8.2.5] 測試期間通電）
@@ -20,6 +29,7 @@
 ---
 
 ## 2026-03-14
+
 
 **法規正確性審查：IEC 61850-3 溫度循環、濕熱循環、IEC 60945 新建**
 
