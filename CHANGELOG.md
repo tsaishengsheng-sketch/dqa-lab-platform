@@ -21,6 +21,7 @@
 - **docs**: 更新 `__init__.py` docstring（四個→五個子模組、新增 IEC 60945 說明）
 - **docs**: README 延伸文件區塊移除已刪除的 `architecture.md`，改為 `AGENTS.md`
 - **docs**: AGENTS.md 目錄結構補入 `iec60945.py`
+- **note**: DNV 法規審查尚未進行，待下一階段處理
 
 ---
 
