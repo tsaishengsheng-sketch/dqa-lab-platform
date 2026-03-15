@@ -7,6 +7,18 @@
 
 ## 2026-03-15
 
+**AI 諮詢 UI 改版 — 多對話管理**
+
+- **feat**: `AIPage.jsx` 重構為純組裝層，拆分為 `client/src/ai/` 子模組
+- **feat**: 新增 `ai/aiStorage.jsx`，localStorage 讀寫、舊資料自動遷移（`dqa_ai_chat_history` → `dqa_ai_chats_v2`）
+- **feat**: 新增 `ai/useAIChat.jsx`，所有狀態邏輯抽離為 custom hook，支援多對話切換
+- **feat**: 新增 `ai/MessageBubble.jsx`，單則訊息元件（含免責聲明、複製、計時、簡體偵測）
+- **feat**: 新增 `ai/ChatArea.jsx`，右側對話區（串流輸出、Markdown 渲染、追問建議列）
+- **feat**: 新增 `ai/ChatSidebar.jsx`，左側欄（對話列表、專案分組、新增/刪除/重新命名）
+- **fix**: `App.jsx` AI 頁容器 `display: block` → `display: flex`，修正子元件 `height: 100%` 不生效問題
+- **fix**: `AIPage.jsx` 加入 `flex: 1`，確保撐滿父層高度
+- **fix**: `ChatSidebar.jsx` sidebar `overflow: hidden` → `overflowX: hidden`，修正新增分組 input 被縱向裁切無法顯示的問題
+
 **AI 諮詢效能優化**
 
 - **perf**: `ai.py` system prompt 移除詳細參數，只保留測試條件名稱，token 數從約 2500 降至約 800
@@ -18,7 +30,8 @@
 **文件精簡**
 
 - **refactor**: 移除 `AGENTS.md` 與 README 重複的 API 端點表格
-- **docs**: 修正法規審查狀態，DNV 待審查 
+- **docs**: 修正法規審查狀態，DNV 待審查
+
 **法規正確性審查：DNV DNVGL-CG-0339:2015 修正**
 
 - **fix**: `dnv.py` ClassA Damp Heat `power_on` False → True（法規 Sec.3[8.2.5] 測試期間通電）

@@ -45,7 +45,13 @@
 │       ├── SOPPage.css
 │       ├── Errorlog.jsx
 │       ├── AIPage.jsx
-│       └── main.jsx
+│       ├── main.jsx
+│       └── ai/
+│           ├── aiStorage.jsx
+│           ├── useAIChat.jsx
+│           ├── MessageBubble.jsx
+│           ├── ChatArea.jsx
+│           └── ChatSidebar.jsx
 ├── docs
 │   └── templates/
 │       └── QA_Test_Report_Template.docx
@@ -65,17 +71,17 @@
 | 異常紀錄 | `backend/app/errors.py` | EMERGENCY 自動寫入 error_logs |
 | 歷史資料 API | `backend/app/main.py` | `GET /api/devices/{id}/history`，從 started_at 至今每分鐘聚合 |
 | AI 法規諮詢後端 | `backend/app/ai.py` | 串流 + 非串流，Ollama qwen2.5:7b，多輪對話，強制繁體中文；system prompt 模組載入時快取（`_SYSTEM_PROMPT_CACHE`），只建立一次；含兩條免責規則 |
-| AI 法規諮詢前端 | `client/src/AIPage.jsx` | 串流逐字輸出、Markdown 渲染、快速提問側欄（可收合）、中途停止保留內容、複製回覆、回覆計時、localStorage 持久化、智慧捲動、追問建議動態產生、雙層免責聲明 |
+| AI 法規諮詢前端 | `client/src/AIPage.jsx` + `client/src/ai/` | 多對話管理、專案分組、串流逐字輸出、Markdown 渲染、快速提問側欄（可收合）、中途停止保留內容、複製回覆、回覆計時、localStorage 持久化、智慧捲動、追問建議動態產生、雙層免責聲明 |
 | 儀表板 | `client/src/Dashboard.jsx` | 六狀態、趨勢圖雙 Y 軸可切換 5 台、步驟進度條（依賴後端 `total_steps`）、倒數計時器、執行紀錄列表（60s 刷新）、低溫 < 0°C 隱藏濕度 |
 | SOP 執行頁 | `client/src/SOPPage.jsx` | 三步驟法規選擇（per-device）、treeLoaded skeleton、步驟依序追蹤（`ds.activeSop.steps.length` 自行計算）、generateSP 低溫濕度為 null、SP+PV 波型曲線、執行資訊面板 |
 | 異常看板 | `client/src/Errorlog.jsx` | 統計卡片 + 完整紀錄列表，60s 自動刷新 |
-| 全域路由 | `client/src/App.jsx` | CSS display 切換（非 Router unmount），四頁面常駐 DOM，切換無延遲 |
+| 全域路由 | `client/src/App.jsx` | CSS display 切換（非 Router unmount），四頁面常駐 DOM，切換無延遲；AI 頁容器 display: flex |
 | QA 報告模板 | `docs/templates/` | 對外 Word 模板 |
 
 ### 下一步待開發（依優先度）
 
 1. **法規正確性審查**（✅ 完成）— IEC 60068、EN 50155、IEC 61850-3、IEC 60945、DNV 全部審查完畢
-2. **AI 諮詢 UI 改版**（🔵 規劃中）— 多對話管理、專案分組，詳見下方規劃段落
+2. **AI 諮詢 UI 改版**（✅ 完成）— 多對話管理、專案分組，詳見下方規劃段落
 3. **AI 治具管理助手**（`/api/ai/fixture-recommend`）
 4. **AI 設備排程預估**（`/api/ai/schedule-estimate`）
 5. **Phase 3**：多台設備架構、治具資料庫、認證系統、RS-485 真實通訊
@@ -99,7 +105,7 @@
 - system prompt：6 條規則，內建 STANDARD_TREE 78 個測試條件名稱（不含詳細參數，約 800 tokens）；模組載入時快取，只建立一次；lifespan 啟動時執行 warm-up 預載模型
 - user message 前綴：`TC_PREFIX = "[請用繁體中文回覆，不可有任何簡體字] "`，只在送出 API 時附加，不存入 messages state
 - 多輪對話：history 陣列帶入，content 均為不含前綴的乾淨字串
-- 前端儲存：`localStorage`，key = `dqa_ai_chat_history`（改版後改為 `dqa_ai_chats_v2`）
+- 前端儲存：`localStorage`，key = `dqa_ai_chats_v2`（多對話格式）
 
 ### 關鍵設計規範
 
@@ -149,6 +155,7 @@ OFFLINE（串口斷線）
 | 檔案 | 正確路徑 |
 |------|---------|
 | 前端元件 | `client/src/ComponentName.jsx` |
+| 前端 AI 子模組 | `client/src/ai/FileName.jsx` |
 | 後端模組 | `backend/app/module.py` |
 | 模擬器 | `simulator/main.py` |
 
@@ -171,37 +178,25 @@ make logs                  # 查看 socat log
 
 ## AI 諮詢 UI 改版規劃（多對話管理）
 
-> 狀態：🔵 規劃中（2026-03-15）
+> 狀態：✅ 完成（2026-03-15）
 > 範圍：僅 `client/src/`，後端不需修改
 
-### 背景
-
-現有 `AIPage.jsx` 已 1100+ 行，且 localStorage 只支援單一對話。本次改版目標：
-1. 支援多對話（新增、切換、刪除）
-2. 對話可分組到自訂專案
-3. 拆分元件，單檔維持 150–200 行
-
-### 目標檔案結構
+### 檔案結構
 
 ```
 client/src/
-├── AIPage.jsx              ← 主元件（只負責組裝，目標 < 100 行）
+├── AIPage.jsx              ← 主元件（只負責組裝）
 └── ai/
     ├── ChatSidebar.jsx     ← 左側欄（對話列表、專案分組、新增/刪除）
     ├── ChatArea.jsx        ← 右側對話區（串流輸出、Markdown 渲染、快速提問）
     ├── MessageBubble.jsx   ← 單則訊息（免責聲明標籤、複製按鈕、計時）
-    ├── useAIChat.js        ← 所有狀態邏輯 hook（多對話切換、串流控制）
-    └── aiStorage.js        ← localStorage 讀寫（含舊資料自動遷移）
+    ├── useAIChat.jsx       ← 所有狀態邏輯 hook（多對話切換、串流控制）
+    └── aiStorage.jsx       ← localStorage 讀寫（含舊資料自動遷移）
 ```
 
-### localStorage 資料結構變更
+### localStorage 資料結構
 
 ```js
-// 舊（單對話）
-key:   "dqa_ai_chat_history"
-value: Message[]
-
-// 新（多對話）
 key:   "dqa_ai_chats_v2"
 value: {
   activeConversationId: string,
@@ -212,54 +207,12 @@ value: {
       projectGroup: string,   // 預設 "未分類"
       createdAt: string,      // ISO 8601
       updatedAt: string,
-      messages: Message[]     // 同現有 Message 型別，不含 TC_PREFIX
+      messages: Message[]
     }
   },
-  projectGroups: string[]     // 使用者自訂分組清單，順序即顯示順序
+  projectGroups: string[]
 }
 ```
-
-**遷移策略**（在 `aiStorage.js` 初始化時執行一次）：
-- 偵測到舊 key `dqa_ai_chat_history` → 自動轉為第一筆對話，title 設為「匯入的對話紀錄」，projectGroup 設為「未分類」
-- 遷移完成後刪除舊 key，避免重複匯入
-
-### 各元件職責
-
-| 檔案 | 職責 | 預估行數 |
-|------|------|---------|
-| `aiStorage.js` | `loadChats()` / `saveChats()` / `migrateOldData()` / `createConversation()` / `deleteConversation()` | ~80 |
-| `useAIChat.js` | `conversations` / `activeId` / `sendMessage()` / `stopStream()` / `switchConversation()` / `addConversation()` / `generateSuggestions()` | ~200 |
-| `MessageBubble.jsx` | 單則訊息渲染、免責聲明標籤、複製按鈕、計時顯示 | ~100 |
-| `ChatArea.jsx` | 訊息列表、串流輸出、智慧捲動、快速提問側欄（可收合） | ~200 |
-| `ChatSidebar.jsx` | 對話列表、專案分組（collapse）、新增/刪除/重新命名對話 | ~180 |
-| `AIPage.jsx` | 組裝以上元件，傳遞 hook 回傳值 | ~80 |
-
-### 開發順序
-
-1. `aiStorage.js` — 純函式，可獨立驗證，先確保資料結構正確
-2. `useAIChat.js` — 遷移現有 AIPage.jsx 所有 state / effect / handler
-3. `MessageBubble.jsx` — 最小 UI 單元，抽出後 ChatArea 最容易清理
-4. `ChatArea.jsx` — 拆出對話區，保留現有串流與捲動邏輯
-5. `ChatSidebar.jsx` — 新功能，依賴 useAIChat 提供的 conversations / switchConversation
-6. `AIPage.jsx` — 改為純組裝層，移除所有 state
-
-### 待確認設計細節
-
-| 項目 | 暫定決策 | 備注 |
-|------|---------|------|
-| 對話標題 | 自動產生（第一則 user message 前 20 字），點擊可手動改 | |
-| 專案分組排序 | 不做拖曳，只做 dropdown 選擇分組 | 可 Phase 2 再加 |
-| 刪除對話確認 | 需二次確認（避免誤刪） | |
-| 側欄預設狀態 | 預設展開，可收合 | |
-| 對話上限 | 暫不設上限，由使用者自行管理 | |
-| history 帶入筆數 | 維持現有 2 則（perf 考量） | |
-
-### 不在本次範圍內
-
-- 後端任何修改
-- 對話匯出 / 匯入功能
-- 跨對話搜尋
-- 治具管理助手（下一個 AI 模組）
 
 ---
 
