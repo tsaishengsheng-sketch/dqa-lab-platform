@@ -17,11 +17,6 @@ from .standards import get_ramp_rate, get_standard
 background_tasks = set()
 
 
-# ============================================================
-# Lifespan（取代已棄用的 @app.on_event）
-# ============================================================
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from .models import init_db
@@ -35,6 +30,11 @@ async def lifespan(app: FastAPI):
     for device_id in DEVICE_IDS:
         s = saved_states.get(device_id)
         if s:
+            # fix: started_at 統一轉為 UTC aware datetime，避免後續型別不一致
+            started_at = s.started_at
+            if started_at is not None and started_at.tzinfo is None:
+                started_at = started_at.replace(tzinfo=datetime.timezone.utc)
+
             cache[device_id] = {
                 "temperature": s.temperature,
                 "humidity": s.humidity,
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
                 "standard_id": s.standard_id,
                 "active_sop_json": s.active_sop_json,
                 "completed_steps": s.completed_steps or 0,
-                "started_at": s.started_at,
+                "started_at": started_at,
             }
             print(f"🔄 [{device_id}] 恢復狀態：{s.status}，溫度：{s.temperature}°C")
         else:
@@ -67,10 +67,9 @@ async def lifespan(app: FastAPI):
     sim_task.add_done_callback(background_tasks.discard)
     print(f"✅ System initialized with {len(DEVICE_IDS)} devices: {DEVICE_IDS}")
 
-    # perf: 預載 Ollama 模型，避免第一次對話冷啟動無法串流
     await _warmup_ollama()
 
-    yield  # 應用程式運行期間
+    yield
 
 
 app = FastAPI(title="KSON AICM Digital Twin Server", lifespan=lifespan)
@@ -95,7 +94,6 @@ app.add_middleware(
 
 
 def _now_utc() -> datetime.datetime:
-    """統一使用 UTC aware datetime"""
     return datetime.datetime.now(datetime.timezone.utc)
 
 
@@ -158,16 +156,32 @@ def _calc_estimated_end_at(item: dict) -> Optional[str]:
 
     high_temp = sop.get("high_temperature") or sop.get("target_temperature") or 25.0
     low_temp = sop.get("low_temperature")
+    ambient = 25.0
 
-    ramp_up_min = abs(high_temp - 25.0) / ramp_rate
-
+    # fix: 低溫測試從 ambient 先降至 low_temp，再升至 high_temp
     if low_temp is not None:
-        ramp_down_min = abs(high_temp - low_temp) / ramp_rate
-        ramp_back_min = abs(low_temp - 25.0) / ramp_rate
-        one_cycle_min = ramp_up_min + dwell_min + ramp_down_min + dwell_min
-        total_min = one_cycle_min * cycles + ramp_back_min
+        if low_temp < ambient:
+            # 低溫測試：ambient → low → high → dwell → low → ... → ambient
+            ramp_to_low_min = abs(ambient - low_temp) / ramp_rate
+            ramp_low_to_high_min = abs(high_temp - low_temp) / ramp_rate
+            one_cycle_min = (
+                ramp_low_to_high_min + dwell_min + ramp_low_to_high_min + dwell_min
+            )
+            total_min = (
+                ramp_to_low_min
+                + one_cycle_min * cycles
+                + abs(low_temp - ambient) / ramp_rate
+            )
+        else:
+            # 雙溫段循環（low_temp >= ambient）
+            ramp_up_min = abs(high_temp - ambient) / ramp_rate
+            ramp_down_min = abs(high_temp - low_temp) / ramp_rate
+            ramp_back_min = abs(low_temp - ambient) / ramp_rate
+            one_cycle_min = ramp_up_min + dwell_min + ramp_down_min + dwell_min
+            total_min = one_cycle_min * cycles + ramp_back_min
     else:
-        ramp_down_min = abs(high_temp - 25.0) / ramp_rate
+        ramp_up_min = abs(high_temp - ambient) / ramp_rate
+        ramp_down_min = abs(high_temp - ambient) / ramp_rate
         total_min = ramp_up_min + dwell_min + ramp_down_min
 
     total_seconds = total_min * 60.0
@@ -224,21 +238,22 @@ async def get_device_history(device_id: str):
     if not started_at:
         return []
 
+    # fix: 統一轉為 UTC naive datetime 再與 DB 比對，避免時區偏移
     if isinstance(started_at, str):
-        started_at_dt = datetime.datetime.fromisoformat(
-            started_at.replace("Z", "")
-        ).replace(tzinfo=None)
+        started_dt = datetime.datetime.fromisoformat(started_at.replace("Z", "+00:00"))
     else:
-        started_at_dt = (
-            started_at.replace(tzinfo=None) if started_at.tzinfo else started_at
-        )
+        started_dt = started_at
+
+    # 轉為 naive UTC（DB 存的是 naive UTC）
+    if started_dt.tzinfo is not None:
+        started_dt = started_dt.replace(tzinfo=None)
 
     with SessionLocal() as db:
         rows = (
             db.query(DeviceData)
             .filter(
                 DeviceData.device_id == device_id,
-                DeviceData.timestamp >= started_at_dt,
+                DeviceData.timestamp >= started_dt,
             )
             .order_by(DeviceData.timestamp.asc())
             .all()
@@ -349,7 +364,7 @@ async def update_progress(device_id: str, payload: ProgressPayload):
     device = _get_device(device_id)
     device["completed_steps"] = payload.completed
     _save_device_state(device_id, device)
-    return {"status": "status", "completed_steps": payload.completed}
+    return {"status": "success", "completed_steps": payload.completed}
 
 
 @app.post("/api/stop/{device_id}/pause")
@@ -444,7 +459,8 @@ async def data_simulator():
                     current_temp + random.uniform(-0.05, 0.05), 2
                 )
 
-            if status in ["RUNNING", "FINISHING", "PAUSED", "EMERGENCY"]:
+            # fix: PAUSED 狀態不累積 write_counters，不寫 DB，避免浪費 IO
+            if status in ["RUNNING", "FINISHING", "EMERGENCY"]:
                 write_counters[device_id] += 1
                 if write_counters[device_id] >= 10:
                     try:
