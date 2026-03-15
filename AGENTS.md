@@ -4,7 +4,7 @@
 
 ---
 
-## 當前狀態快照（2026-03-14）
+## 當前狀態快照（2026-03-15）
 
 ### 專案目錄結構
 
@@ -74,7 +74,7 @@
 
 ### 下一步待開發（依優先度）
 
-1. **法規正確性審查**（進行中）— IEC 60068、EN 50155、IEC 61850-3、IEC 60945 已完成；DNV 待審查
+1. **法規正確性審查**（✅ 完成）— IEC 60068、EN 50155、IEC 61850-3、IEC 60945、DNV 全部審查完畢
 2. **AI 治具管理助手**（`/api/ai/fixture-recommend`）
 3. **AI 設備排程預估**（`/api/ai/schedule-estimate`）
 4. **Phase 3**：多台設備架構、治具資料庫、認證系統、RS-485 真實通訊
@@ -95,7 +95,7 @@
 - 模型：`qwen2.5:7b`（本機 Ollama，`http://localhost:11434`）；備用：`qwen2.5:14b`
 - timeout：180 秒
 - 端點：`/api/ai/standards-query`（非串流）、`/api/ai/standards-query-stream`（串流，前端主要使用）
-- system prompt：6 條規則，內建 STANDARD_TREE 78 個測試條件摘要；模組載入時快取，只建立一次
+- system prompt：6 條規則，內建 STANDARD_TREE 78 個測試條件名稱（不含詳細參數，約 800 tokens）；模組載入時快取，只建立一次；lifespan 啟動時執行 warm-up 預載模型
 - user message 前綴：`TC_PREFIX = "[請用繁體中文回覆，不可有任何簡體字] "`，只在送出 API 時附加，不存入 messages state
 - 多輪對話：history 陣列帶入，content 均為不含前綴的乾淨字串
 - 前端儲存：`localStorage`，key = `dqa_ai_chat_history`
