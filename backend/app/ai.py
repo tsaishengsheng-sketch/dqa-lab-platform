@@ -11,16 +11,10 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 OLLAMA_URL = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "qwen2.5:7b"
 
-# fix: 模組載入時建立一次，避免每次 API 呼叫都重跑 get_standard_tree()
 _SYSTEM_PROMPT_CACHE: Optional[str] = None
 
 
 def _build_system_prompt() -> str:
-    """
-    將 STANDARD_TREE 摘要成文字，嵌入 system prompt。
-    只列出法規、版本、測試條件名稱與關鍵參數，不列完整步驟。
-    結果會快取在模組層級，只建立一次。
-    """
     global _SYSTEM_PROMPT_CACHE
     if _SYSTEM_PROMPT_CACHE is not None:
         return _SYSTEM_PROMPT_CACHE
@@ -48,7 +42,6 @@ def _build_system_prompt() -> str:
                 f"  版本：{ver_data['label']} — {ver_data.get('description', '')}"
             )
             for test_key, test_data in ver_data["tests"].items():
-                # perf: 只列測試條件名稱，不列詳細參數，降低 context token 數
                 lines.append(f"    - {test_data['name']}")
 
     _SYSTEM_PROMPT_CACHE = "\n".join(lines)
@@ -56,11 +49,8 @@ def _build_system_prompt() -> str:
 
 
 async def _warmup_ollama():
-    """
-    伺服器啟動時預載模型，避免第一次對話因模型冷啟動而無法串流。
-    """
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             await client.post(
                 OLLAMA_URL,
                 json={
@@ -83,59 +73,43 @@ class QueryResponse(BaseModel):
     reply: str
 
 
-@router.post("/standards-query", response_model=QueryResponse)
-async def standards_query(req: QueryRequest):
+def _build_messages(req: QueryRequest) -> list:
     """
-    法規諮詢助手：使用者描述產品與需求，LLM 推薦適合的法規與測試條件。
+    組裝送給 Ollama 的 messages。
+    fix: 前端已在 message 加入 TC_PREFIX，後端不再重複加前綴，避免雙重前綴。
+    history 內容也是前端傳入的乾淨字串，直接使用。
     """
-    system_prompt = _build_system_prompt()
-
-    messages = [{"role": "system", "content": system_prompt}]
-
+    messages = [{"role": "system", "content": _build_system_prompt()}]
     for h in req.history:
         messages.append(h)
+    messages.append({"role": "user", "content": req.message})
+    return messages
 
-    messages.append({"role": "user", "content": f"[請用繁體中文回覆] {req.message}"})
 
+@router.post("/standards-query", response_model=QueryResponse)
+async def standards_query(req: QueryRequest):
+    messages = _build_messages(req)
     async with httpx.AsyncClient(timeout=180.0) as client:
         response = await client.post(
             OLLAMA_URL,
-            json={
-                "model": OLLAMA_MODEL,
-                "messages": messages,
-                "stream": False,
-            },
+            json={"model": OLLAMA_MODEL, "messages": messages, "stream": False},
         )
         response.raise_for_status()
         data = response.json()
-
     reply = data["message"]["content"]
     return QueryResponse(reply=reply)
 
 
 @router.post("/standards-query-stream")
 async def standards_query_stream(req: QueryRequest):
-    """
-    串流版法規諮詢，逐字回傳 Ollama 輸出。
-    前端使用 fetch + ReadableStream 讀取。
-    """
-    system_prompt = _build_system_prompt()
-
-    messages = [{"role": "system", "content": system_prompt}]
-    for h in req.history:
-        messages.append(h)
-    messages.append({"role": "user", "content": f"[請用繁體中文回覆] {req.message}"})
+    messages = _build_messages(req)
 
     async def generate():
         async with httpx.AsyncClient(timeout=180.0) as client:
             async with client.stream(
                 "POST",
                 OLLAMA_URL,
-                json={
-                    "model": OLLAMA_MODEL,
-                    "messages": messages,
-                    "stream": True,
-                },
+                json={"model": OLLAMA_MODEL, "messages": messages, "stream": True},
             ) as response:
                 async for line in response.aiter_lines():
                     if line.strip():
