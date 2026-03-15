@@ -383,7 +383,12 @@ const S = {
     padding: "4px 8px",
     outline: "none",
   },
-  groupActions: { marginTop: 8, paddingTop: 8, borderTop: "1px solid #21262d" },
+  groupActions: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTop: "1px solid #21262d",
+    flexShrink: 0,
+  },
   groupInput: {
     flex: 1,
     background: "#0d1117",
@@ -415,15 +420,17 @@ const S = {
     width: "100%",
     marginTop: 8,
     transition: "background .15s",
+    flexShrink: 0,
   },
   modelBadge: {
     fontSize: 11,
     color: "#8b949e",
-    marginTop: "auto",
+    marginTop: 8,
     paddingTop: 12,
     paddingLeft: 4,
     display: "flex",
     alignItems: "center",
     gap: 6,
+    flexShrink: 0,
   },
 };
