@@ -27,6 +27,31 @@
 - **perf**: `AIPage.jsx` generateSuggestions 加 3s 延遲避免搶佔 Ollama 資源，history 從 6 則縮至 2 則
 - **fix**: `AIPage.jsx` 空白頁面條數更新：6 大法規 64 條 → 5 大法規 78 條
 
+**AI 諮詢模組 bug 修正（第二批）**
+
+- **fix**: `aiStorage.jsx` `loadChats` 自動清理空分組、補齊孤立分組、去除重複分組，頁面載入時全自動執行無需手動操作
+- **fix**: `aiStorage.jsx` `deleteConversation` 刪除對話後自動清除已無對話的空分組
+- **fix**: `aiStorage.jsx` `loadChats` 修正 `activeConversationId` 指向不存在對話時自動修正為最新一筆
+- **fix**: `useAIChat.jsx` `addConversation` 解構錯誤修正，新增分組時 `projectGroup` 參數正確傳入
+- **fix**: `useAIChat.jsx` `stopStream` abort 順序修正，先 abort 再清狀態，避免 `finally` 誤判重複執行
+- **fix**: `useAIChat.jsx` `retryInTraditional` 重試前清除原本的 assistant 回覆，避免對話重複
+- **fix**: `useAIChat.jsx` `clearConversation` 中止進行中的串流與追問建議請求，確保狀態完全重置
+- **fix**: `useAIChat.jsx` `generateSuggestions` 加入 `forConvId` 比對，切換對話後不寫入錯誤對話；新增 `suggestAbortRef` 切換對話時自動取消上一輪請求
+- **fix**: `useAIChat.jsx` `setConversationGroup` 移動對話至新分組時自動補入 `projectGroups` 陣列
+- **perf**: `useAIChat.jsx` `MAX_HISTORY` 從 2 提升至 4，改善多輪對話上下文
+- **fix**: `ChatSidebar.jsx` `commitAddGroup` 新增分組時同時建立新對話，避免空分組被自動清除
+- **feat**: `ChatSidebar.jsx` 新增移動分組功能（📁 按鈕），對話可跨分組移動
+- **fix**: `ChatSidebar.jsx` `convItemActive` 改用完整 `padding` 取代 `paddingLeft`，修正 React padding shorthand 警告
+- **fix**: `ChatArea.jsx` `messages.map` 改用 `role+index+content` 組合 key，避免 index 作 key 的 diff 錯誤
+- **fix**: `ChatArea.jsx` 建議列顯示邏輯修正，避免 loading 結束瞬間舊建議閃爍
+- **fix**: `MessageBubble.jsx` `SIMPLIFIED_ONLY` 移除繁簡共用字（話、問、題、時、機、動、為、對等），降低誤判率
+- **fix**: `MessageBubble.jsx` `handleCopy` 加入 `execCommand` fallback，支援 HTTP 非安全環境
+- **fix**: `MessageBubble.jsx` `CollapsibleBubble` 改用 `contentKey`（內容長度）取代 `children` reference 觸發高度測量，避免每次 render 都重新測量
+
+**Dashboard 修正**
+
+- **fix**: `Dashboard.jsx` 歷史資料陣列改用展開運算子建立可變副本，修正 React StrictMode 下陣列被凍結導致 `push` 失敗的問題
+
 **文件精簡**
 
 - **refactor**: 移除 `AGENTS.md` 與 README 重複的 API 端點表格

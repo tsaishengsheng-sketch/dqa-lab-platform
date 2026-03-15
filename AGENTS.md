@@ -71,8 +71,8 @@
 | 異常紀錄 | `backend/app/errors.py` | EMERGENCY 自動寫入 error_logs |
 | 歷史資料 API | `backend/app/main.py` | `GET /api/devices/{id}/history`，從 started_at 至今每分鐘聚合 |
 | AI 法規諮詢後端 | `backend/app/ai.py` | 串流 + 非串流，Ollama qwen2.5:7b，多輪對話，強制繁體中文；system prompt 模組載入時快取（`_SYSTEM_PROMPT_CACHE`），只建立一次；含兩條免責規則 |
-| AI 法規諮詢前端 | `client/src/AIPage.jsx` + `client/src/ai/` | 多對話管理、專案分組、串流逐字輸出、Markdown 渲染、快速提問側欄（可收合）、中途停止保留內容、複製回覆、回覆計時、localStorage 持久化、智慧捲動、追問建議動態產生、雙層免責聲明 |
-| 儀表板 | `client/src/Dashboard.jsx` | 六狀態、趨勢圖雙 Y 軸可切換 5 台、步驟進度條（依賴後端 `total_steps`）、倒數計時器、執行紀錄列表（60s 刷新）、低溫 < 0°C 隱藏濕度 |
+| AI 法規諮詢前端 | `client/src/AIPage.jsx` + `client/src/ai/` | 多對話管理、專案分組（含移動對話至分組）、串流逐字輸出、Markdown 渲染、快速提問側欄（可收合）、中途停止保留內容、複製回覆（含 HTTP fallback）、回覆計時、localStorage 持久化、智慧捲動、追問建議動態產生（切換對話時自動取消）、雙層免責聲明 |
+| 儀表板 | `client/src/Dashboard.jsx` | 六狀態、趨勢圖雙 Y 軸可切換 5 台、步驟進度條（依賴後端 `total_steps`）、倒數計時器、執行紀錄列表（60s 刷新）、低溫 < 0°C 隱藏濕度；歷史陣列改用展開運算子避免 React StrictMode 凍結問題 |
 | SOP 執行頁 | `client/src/SOPPage.jsx` | 三步驟法規選擇（per-device）、treeLoaded skeleton、步驟依序追蹤（`ds.activeSop.steps.length` 自行計算）、generateSP 低溫濕度為 null、SP+PV 波型曲線、執行資訊面板 |
 | 異常看板 | `client/src/Errorlog.jsx` | 統計卡片 + 完整紀錄列表，60s 自動刷新 |
 | 全域路由 | `client/src/App.jsx` | CSS display 切換（非 Router unmount），四頁面常駐 DOM，切換無延遲；AI 頁容器 display: flex |
@@ -82,9 +82,10 @@
 
 1. **法規正確性審查**（✅ 完成）— IEC 60068、EN 50155、IEC 61850-3、IEC 60945、DNV 全部審查完畢
 2. **AI 諮詢 UI 改版**（✅ 完成）— 多對話管理、專案分組，詳見下方規劃段落
-3. **AI 治具管理助手**（`/api/ai/fixture-recommend`）
-4. **AI 設備排程預估**（`/api/ai/schedule-estimate`）
-5. **Phase 3**：多台設備架構、治具資料庫、認證系統、RS-485 真實通訊
+3. **AI 諮詢模組 bug 修正**（✅ 完成）— 分組管理、串流狀態、簡體偵測、Dashboard 歷史陣列凍結問題全部修正
+4. **AI 治具管理助手**（`/api/ai/fixture-recommend`）
+5. **AI 設備排程預估**（`/api/ai/schedule-estimate`）
+6. **Phase 3**：多台設備架構、治具資料庫、認證系統、RS-485 真實通訊
 
 ### 環境測試標準模組（standards/）
 
@@ -104,8 +105,9 @@
 - 端點：`/api/ai/standards-query`（非串流）、`/api/ai/standards-query-stream`（串流，前端主要使用）
 - system prompt：6 條規則，內建 STANDARD_TREE 78 個測試條件名稱（不含詳細參數，約 800 tokens）；模組載入時快取，只建立一次；lifespan 啟動時執行 warm-up 預載模型
 - user message 前綴：`TC_PREFIX = "[請用繁體中文回覆，不可有任何簡體字] "`，只在送出 API 時附加，不存入 messages state
-- 多輪對話：history 陣列帶入，content 均為不含前綴的乾淨字串
+- 多輪對話：history 陣列帶入（MAX_HISTORY = 4），content 均為不含前綴的乾淨字串
 - 前端儲存：`localStorage`，key = `dqa_ai_chats_v2`（多對話格式）
+- 追問建議：3s 延遲後產生，切換對話時自動 abort 上一輪請求，結果只寫入發送當下的對話
 
 ### 關鍵設計規範
 
@@ -187,11 +189,11 @@ make logs                  # 查看 socat log
 client/src/
 ├── AIPage.jsx              ← 主元件（只負責組裝）
 └── ai/
-    ├── ChatSidebar.jsx     ← 左側欄（對話列表、專案分組、新增/刪除）
-    ├── ChatArea.jsx        ← 右側對話區（串流輸出、Markdown 渲染、快速提問）
+    ├── ChatSidebar.jsx     ← 左側欄（對話列表、專案分組、新增/刪除/移動分組）
+    ├── ChatArea.jsx        ← 右側對話區（串流輸出、Markdown 渲染、追問建議列）
     ├── MessageBubble.jsx   ← 單則訊息（免責聲明標籤、複製按鈕、計時）
     ├── useAIChat.jsx       ← 所有狀態邏輯 hook（多對話切換、串流控制）
-    └── aiStorage.jsx       ← localStorage 讀寫（含舊資料自動遷移）
+    └── aiStorage.jsx       ← localStorage 讀寫（含舊資料自動遷移、空分組自動清理）
 ```
 
 ### localStorage 資料結構
@@ -204,7 +206,7 @@ value: {
     [id: string]: {
       id: string,
       title: string,          // 自動取第一則 user message 前 20 字；點擊可手動改
-      projectGroup: string,   // 預設 "未分類"
+      projectGroup: string,   // 預設 "未分組"
       createdAt: string,      // ISO 8601
       updatedAt: string,
       messages: Message[]
