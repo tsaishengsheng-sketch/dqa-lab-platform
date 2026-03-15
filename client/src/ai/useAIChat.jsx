@@ -8,7 +8,8 @@ import {
 } from "./aiStorage";
 
 const API_BASE = "http://localhost:8000";
-const TC_PREFIX = "[請用繁體中文回覆，不可有任何簡體字] ";
+const TC_PREFIX =
+  "[MUST reply in Traditional Chinese zh-TW ONLY, NO Simplified Chinese] ";
 const MAX_HISTORY = 4;
 
 export default function useAIChat() {
