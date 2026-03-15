@@ -74,32 +74,10 @@
 
 ### 下一步待開發（依優先度）
 
-1. **法規正確性審查**（✅ 完成）— IEC 60068、EN 50155、IEC 61850-3、IEC 60945 全部審查完畢
+1. **法規正確性審查**（進行中）— IEC 60068、EN 50155、IEC 61850-3、IEC 60945 已完成；DNV 待審查
 2. **AI 治具管理助手**（`/api/ai/fixture-recommend`）
 3. **AI 設備排程預估**（`/api/ai/schedule-estimate`）
 4. **Phase 3**：多台設備架構、治具資料庫、認證系統、RS-485 真實通訊
-
-### 後端 API 端點
-
-| 方法 | 路徑 | 說明 |
-|------|------|------|
-| GET  | `/api/latest` | 即時溫濕度與狀態（KSON_CH01，向後相容） |
-| GET  | `/api/devices` | 所有設備即時狀態（含 total_steps、completed_steps、started_at、estimated_end_at）|
-| GET  | `/api/devices/{id}/history` | 設備歷史溫濕度，從 started_at 至今每分鐘聚合 |
-| GET  | `/api/sop/` | SOP 列表 |
-| GET  | `/api/sop/standards/tree` | 三層標準樹（不含 steps 欄位，~12kB） |
-| POST | `/api/sop/start` | 啟動 SOP，存入 total_steps |
-| POST | `/api/devices/{id}/progress` | 更新完成步驟數並持久化 |
-| POST | `/api/sop-executions/` | 儲存 SOP 執行紀錄 |
-| GET  | `/api/sop-executions/{id}` | 讀取指定執行紀錄 |
-| GET  | `/api/reports/csv/{execution_id}` | 下載 CSV 測試報告（big5，RFC 5987 檔名） |
-| GET  | `/api/reports/list` | 所有執行紀錄列表 |
-| GET  | `/api/errors/` | 異常紀錄列表 |
-| POST | `/api/stop/{device_id}/pause` | `RUNNING ↔ PAUSED` 切換 |
-| POST | `/api/stop/{device_id}/normal` | 進入 `FINISHING`，降溫後回 `IDLE` |
-| POST | `/api/stop/{device_id}/emergency` | 強制進入 `EMERGENCY`，自動寫入異常紀錄 |
-| POST | `/api/ai/standards-query` | AI 法規諮詢（非串流） |
-| POST | `/api/ai/standards-query-stream` | AI 法規諮詢（串流） |
 
 ### 環境測試標準模組（standards/）
 
