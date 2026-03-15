@@ -4,52 +4,32 @@
 
 ---
 
+## 2026-03-15
+
+**文件精簡**
+
+- **refactor**: 移除 `AGENTS.md` 與 README 重複的 API 端點表格
+- **docs**: 修正法規審查狀態，DNV 待審查
+
+---
+
 ## 2026-03-14
 
-**法規正確性審查：文件整合**
-
-- **docs**: 合併 `architecture.md` 進 `AGENTS.md`，刪除 `architecture.md`
-- **chore**: 移除 `iec60068.py` / `iec61850.py` 中所有內部參考字串
-
----
-
-## 2026-03-14（續三）
-
-**法規正確性審查：__init__.py 整合 IEC 60945**
-
-- **feat**: `__init__.py` 加入 `iec60945` import 與 STANDARD_TREE 註冊
-- **docs**: 更新 `__init__.py` docstring（四個→五個子模組、新增 IEC 60945 說明）
-- **docs**: README 延伸文件區塊移除已刪除的 `architecture.md`，改為 `AGENTS.md`
-- **docs**: AGENTS.md 目錄結構補入 `iec60945.py`
-- **note**: DNV 法規審查尚未進行，待下一階段處理
-
----
-
-## 2026-03-14（續二）
-
-**法規正確性審查：新建 IEC 60945:2002**
-
-- **feat**: 新建 `backend/app/standards/iec60945.py`，IEC 60945:2002 共 7 條：
-  - `Dry_Heat_Storage_+70`：+70°C / 16h / 非通電（Portable / Exposed）
-  - `Dry_Heat_Functional_+55`：+55°C / 16h / 通電（Portable / Protected / Exposed）
-  - `Damp_Heat_+40_93RH`：+40°C / 93%RH / 16h / 通電（Db variant 1）
-  - `Cold_Portable_-20_Functional`：-20°C / 16h / 通電（Portable）
-  - `Cold_Portable_-30_Storage`：-30°C / 16h / 非通電（Portable）
-  - `Cold_Protected_-15`：-15°C / 16h / 非通電（Protected）
-  - `Cold_Exposed_-25`：-25°C / 16h / 非通電（Exposed）
-- sop_id 總數：71 → 78
-
----
-
-## 2026-03-14（續）
-
-**法規正確性審查：IEC 61850-3 溫度循環與濕熱循環**
+**法規正確性審查：IEC 61850-3 溫度循環、濕熱循環、IEC 60945 新建**
 
 - **feat**: `iec61850.py` 新增 C1/C2/C3 各一條 Test Nb 溫度循環（sop_id 68→71）：
   - C1：-10°C ↔ +55°C / 3h/step / 5 cycles / 1°C/min
   - C2/C3：-40°C ↔ +70°C / 3h/step / 5 cycles / 1°C/min
-- **fix**: `iec61850.py` C1 Damp Heat 濕度 95%RH → 93%RH（IEC 60068-2-30 高溫段法規明文）
-- IEC 61850-3 條數：16 → 19
+- **fix**: `iec61850.py` C1 Damp Heat 濕度 95%RH → 93%RH
+- **feat**: 新建 `iec60945.py`，IEC 60945:2002 共 7 條（乾熱儲存/工作、濕熱 Db variant 1、低溫儲存/工作）
+- **feat**: `__init__.py` 加入 `iec60945` import 與 STANDARD_TREE 註冊，四個→五個子模組
+- sop_id 總數：68 → 78；IEC 61850-3 條數：16 → 19
+
+**文件整合**
+
+- **docs**: 合併 `architecture.md` 進 `AGENTS.md`，刪除 `architecture.md`
+- **docs**: README 延伸文件連結由 `architecture.md` 改為 `AGENTS.md`
+- **chore**: 移除 `iec60068.py` / `iec61850.py` 中所有內部參考字串
 
 ---
 
