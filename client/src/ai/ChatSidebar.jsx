@@ -99,7 +99,8 @@ export default function ChatSidebar({
           <div style={S.listArea}>
             {sortedGroups.map((group) => {
               const items = grouped[group] ?? [];
-              if (items.length === 0) return null;
+              // fix: 未分組且空時不顯示，其他分組即使空也要顯示（讓使用者可以拖曳）
+              if (group === "未分組" && items.length === 0) return null;
               return (
                 <div key={group}>
                   <div
@@ -125,6 +126,9 @@ export default function ChatSidebar({
                   >
                     {group}
                   </div>
+                  {items.length === 0 && (
+                    <div style={S.emptyGroup}>拖曳對話至此分組</div>
+                  )}
                   {items.map((conv) => {
                     const isActive = conv.id === activeId;
                     return (
@@ -391,6 +395,12 @@ const S = {
     letterSpacing: "0.06em",
     textTransform: "uppercase",
     padding: "8px 4px 4px",
+  },
+  emptyGroup: {
+    fontSize: 10,
+    color: "#484f58",
+    padding: "6px 8px",
+    fontStyle: "italic",
   },
   convItem: {
     display: "flex",
