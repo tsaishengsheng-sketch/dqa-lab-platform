@@ -84,7 +84,7 @@ async def standards_query(req: QueryRequest):
                 "model": OLLAMA_MODEL,
                 "messages": messages,
                 "stream": False,
-                "options": {"num_ctx": 2048, "temperature": 0.3},
+                "options": {"num_ctx": 2048, "temperature": 0.0, "top_p": 0.9},
             },
         )
         response.raise_for_status()
@@ -106,7 +106,11 @@ async def standards_query_stream(req: QueryRequest):
                     "model": OLLAMA_MODEL,
                     "messages": messages,
                     "stream": True,
-                    "options": {"num_ctx": 2048, "temperature": 0.3},
+                    "options": {
+                        "num_ctx": 2048,
+                        "temperature": 0.0,
+                        "top_p": 0.9,
+                    },
                 },
             ) as response:
                 async for line in response.aiter_lines():
