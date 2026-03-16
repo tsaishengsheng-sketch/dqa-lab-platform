@@ -108,12 +108,13 @@ async def webhook(request: Request):
     body = await request.body()
     signature = request.headers.get("X-Line-Signature", "")
 
-    # 有簽名才驗證，Verify 測試或無簽名請求直接通過
-    if signature and LINE_CHANNEL_SECRET:
-        if not _verify_signature(body, signature):
-            raise HTTPException(status_code=400, detail="Invalid signature")
-
     import json
+
+    # fix: 簽名驗證——必須有簽名且驗證通過才繼續
+    # LINE Verify 請求帶的是空 events，驗證通過後直接回 200 即可
+    if LINE_CHANNEL_SECRET:
+        if not signature or not _verify_signature(body, signature):
+            raise HTTPException(status_code=400, detail="Invalid signature")
 
     data = json.loads(body)
     cache = request.app.state.AICM_CACHE
@@ -124,6 +125,11 @@ async def webhook(request: Request):
             continue
         if event.get("message", {}).get("type") != "text":
             continue
+
+        # fix: 白名單驗證，只允許指定 User ID 操作
+        sender_id = event.get("source", {}).get("userId", "")
+        if LINE_USER_ID and sender_id != LINE_USER_ID:
+            continue  # 非授權使用者，靜默忽略
 
         user_text = event["message"]["text"]
         reply_token = event.get("replyToken")
