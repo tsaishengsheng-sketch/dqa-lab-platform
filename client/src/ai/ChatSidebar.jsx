@@ -1,5 +1,5 @@
 // client/src/ai/ChatSidebar.jsx
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { exportChat } from "./aiStorage";
 
 export default function ChatSidebar({
@@ -23,6 +23,8 @@ export default function ChatSidebar({
   const [newGroupInput, setNewGroupInput] = useState("");
   const [showGroupInput, setShowGroupInput] = useState(false);
   const [movingId, setMovingId] = useState(null);
+  const [dragId, setDragId] = useState(null);
+  const [dragOverGroup, setDragOverGroup] = useState(null);
 
   // 以 projectGroups 為主，「未分組」永遠最後
   const sortedGroups = useMemo(
@@ -101,7 +103,29 @@ export default function ChatSidebar({
               if (items.length === 0) return null;
               return (
                 <div key={group}>
-                  <div style={S.groupLabel}>{group}</div>
+                  <div
+                    style={{
+                      ...S.groupLabel,
+                      background:
+                        dragOverGroup === group && dragId
+                          ? "#1f6feb22"
+                          : "transparent",
+                      borderRadius: 4,
+                      transition: "background .15s",
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragOverGroup(group);
+                    }}
+                    onDragLeave={() => setDragOverGroup(null)}
+                    onDrop={() => {
+                      if (dragId && group) onSetGroup(dragId, group);
+                      setDragId(null);
+                      setDragOverGroup(null);
+                    }}
+                  >
+                    {group}
+                  </div>
                   {items.map((conv) => {
                     const isActive = conv.id === activeId;
                     return (
@@ -171,7 +195,16 @@ export default function ChatSidebar({
                           </div>
                         ) : (
                           <div
-                            style={isActive ? S.convItemActive : S.convItem}
+                            style={{
+                              ...(isActive ? S.convItemActive : S.convItem),
+                              opacity: dragId === conv.id ? 0.4 : 1,
+                            }}
+                            draggable
+                            onDragStart={() => setDragId(conv.id)}
+                            onDragEnd={() => {
+                              setDragId(null);
+                              setDragOverGroup(null);
+                            }}
                             onClick={() => onSwitch(conv.id)}
                             onMouseEnter={(e) => {
                               if (!isActive)

@@ -53,9 +53,16 @@ export default function useAIChat() {
   }, []);
 
   useEffect(() => {
+    // 只有新訊息時才捲底，串流更新中若使用者往上滾則不強制
     if (!userScrolledUpRef.current)
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamText]);
+  }, [messages]);
+
+  useEffect(() => {
+    // 串流更新時只在使用者沒有往上滾的情況下才跟著捲
+    if (!userScrolledUpRef.current)
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+  }, [streamText]);
 
   const scrollToBottomForce = useCallback(() => {
     userScrolledUpRef.current = false;
