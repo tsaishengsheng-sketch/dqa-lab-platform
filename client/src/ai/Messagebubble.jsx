@@ -236,13 +236,9 @@ export default function MessageBubble({ m, onRetry, isFirstAssistant = true }) {
 
         {m.role === "assistant" && (
           <>
-            {isFirstAssistant ? (
-              <div style={S.disclaimer}>{DISCLAIMER}</div>
-            ) : (
-              <div style={S.disclaimerIcon} title={DISCLAIMER}>
-                ⚠️
-              </div>
-            )}
+            {/* 始终显示完整免责文字 */}
+            <div style={S.disclaimer}>{DISCLAIMER}</div>
+
             <div style={S.meta}>
               {m.elapsed != null && (
                 <span style={S.elapsed}>⏱ {m.elapsed}s</span>
