@@ -4,11 +4,12 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
+from .standards import get_standard_tree
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-OLLAMA_MODEL = "gemma3:4b"
+OLLAMA_MODEL = "llama3.1:8b"
 
 _SYSTEM_PROMPT_CACHE: Optional[str] = None  # 重啟後自動重建
 
@@ -18,23 +19,24 @@ def _build_system_prompt() -> str:
     if _SYSTEM_PROMPT_CACHE is not None:
         return _SYSTEM_PROMPT_CACHE
 
-    _SYSTEM_PROMPT_CACHE = """You are an industrial environmental testing consultant for temperature chamber tests.
+    tree = get_standard_tree()
 
-FORBIDDEN - never recommend these (temperature chamber cannot perform them):
-- Vibration test, mechanical shock test, drop test
-- EMC / electromagnetic compatibility test
-- Salt spray test, corrosion test
-- IP rating / ingress protection test
-- Any test requiring equipment other than a temperature chamber
+    lines = [
+        "你是工業環境測試法規顧問，專注於溫箱測試。",
+        "只能用繁體中文回答，禁止簡體中文。繁體範例：設備、測試、標準、循環、穩態。",
+        "回答簡潔不重複，推薦時標注法規正式版本號（例如 IEC 60068-2-1:2007）。",
+        "",
+        "本系統支援的測試條件：",
+    ]
 
-SCOPE: Only advise on IEC 60068, EN 50155, IEC 61850-3, IEC 60945, DNV DNVGL-CG-0339. Refuse questions outside this scope.
+    for std_key, std_data in tree.items():
+        test_names = []
+        for ver_data in std_data["versions"].values():
+            for test_data in ver_data["tests"].values():
+                test_names.append(test_data["name"])
+        lines.append(f"{std_key}：{'、'.join(test_names)}")
 
-EQUIPMENT: This lab only has temperature chambers. If user asks about non-chamber tests, politely redirect to chamber-applicable tests only.
-
-FORMAT: No markdown code blocks. Concise answers, no repetition. Include official version numbers (e.g. IEC 60068-2-1:2007).
-
-LANGUAGE: You MUST respond in Traditional Chinese (zh-TW) only. Simplified Chinese is STRICTLY FORBIDDEN. Traditional Chinese: 設備、測試、標準、循環、穩態。Simplified Chinese (DO NOT USE): 设备、测试、标准、循环、稳态。"""
-
+    _SYSTEM_PROMPT_CACHE = "\n".join(lines)
     return _SYSTEM_PROMPT_CACHE
 
 
@@ -64,11 +66,7 @@ class QueryResponse(BaseModel):
 
 
 def _build_messages(req: QueryRequest) -> list:
-    """
-    組裝送給 Ollama 的 messages。
-    fix: 前端已在 message 加入 TC_PREFIX，後端不再重複加前綴，避免雙重前綴。
-    history 內容也是前端傳入的乾淨字串，直接使用。
-    """
+    """組裝送給 Ollama 的 messages，history 為前端傳入的乾淨字串。"""
     messages = [{"role": "system", "content": _build_system_prompt()}]
     for h in req.history:
         messages.append(h)

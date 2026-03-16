@@ -94,18 +94,6 @@
 
 ---
 
-## 已知待修問題
-
-### 待處理
-
-- `ChatSidebar.jsx` 雙擊標題直接進入編輯模式
-- `ChatSidebar.jsx` 分組支援點擊摺疊/展開
-- `ChatSidebar.jsx` 側欄收合時顯示目前對話縮略
-- `ChatSidebar.jsx` 刪除確認按鈕字體 11px 太小
-- `useAIChat.jsx` `sendMessage` 的 `useCallback` 依賴陣列包含 `messages`，應改用 `useRef`
-- 快捷鍵：`Cmd+K` 新對話、`Esc` 停止串流
-
----
 
 ## 技術規格
 
