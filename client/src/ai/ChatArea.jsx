@@ -1,20 +1,34 @@
 // client/src/ai/ChatArea.jsx
+import { useState, useEffect, useRef } from "react";
 import MessageBubble, { DISCLAIMER, renderMarkdown } from "./MessageBubble";
 
-const DEFAULT_QUESTIONS = [
-  "我有鐵路車載電子設備，需要哪些環境測試？",
-  "IEC 60068 和 EN 50155 有什麼差別？",
-  "我的產品要在戶外使用，適合哪個法規？",
-  "DNV 認證需要哪些溫度測試條件？",
-  "什麼情況下需要做濕熱循環測試？",
-];
+// 串流泡泡：每秒更新已經過秒數
+function StreamingBubble({ streamText }) {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+  useEffect(() => {
+    startRef.current = Date.now();
+    setElapsed(0);
+    const timer = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-start" }}>
+      <div style={{ ...S.aiBubble, borderColor: "#58a6ff" }}>
+        {renderMarkdown(streamText)}
+        <span style={S.cursor}>▍</span>
+        <span style={S.streamElapsed}>⏱ {elapsed}s</span>
+      </div>
+    </div>
+  );
+}
 
 export default function ChatArea({
   messages,
   loading,
   streamText,
-  suggestions,
-  suggestLoading,
   input,
   chatAreaRef,
   bottomRef,
@@ -26,11 +40,6 @@ export default function ChatArea({
   onInputChange,
   onKeyDown,
 }) {
-  // fix: 避免建議列閃爍——loading 中若有上一輪建議繼續顯示，直到 suggestLoading 接管
-  const showSuggestRow = !loading || suggestLoading;
-  const currentQuestions = suggestions ?? DEFAULT_QUESTIONS;
-  const isDynamic = suggestions !== null;
-
   return (
     <div style={S.main}>
       {/* ── 訊息區 ── */}
@@ -47,23 +56,21 @@ export default function ChatArea({
           </div>
         )}
 
-        {/* fix: 用 createdAt+index 組合 key，避免 index 作 key 的 diff 錯誤 */}
-        {messages.map((m, i) => (
-          <MessageBubble
-            key={`${m.role}-${i}-${m.content.slice(0, 8)}`}
-            m={m}
-            onRetry={() => onRetry(i)}
-          />
-        ))}
+        {messages.map((m, i) => {
+          const isFirstAssistant =
+            m.role === "assistant" &&
+            messages.slice(0, i).every((msg) => msg.role !== "assistant");
+          return (
+            <MessageBubble
+              key={`${m.role}-${i}-${m.content.slice(0, 8)}`}
+              m={m}
+              onRetry={() => onRetry(i)}
+              isFirstAssistant={isFirstAssistant}
+            />
+          );
+        })}
 
-        {loading && streamText && (
-          <div style={S.aiWrap}>
-            <div style={{ ...S.aiBubble, borderColor: "#58a6ff" }}>
-              {renderMarkdown(streamText)}
-              <span style={S.cursor}>▍</span>
-            </div>
-          </div>
-        )}
+        {loading && streamText && <StreamingBubble streamText={streamText} />}
 
         {loading && !streamText && (
           <div style={S.aiWrap}>
@@ -78,40 +85,6 @@ export default function ChatArea({
         )}
         <div ref={bottomRef} />
       </div>
-
-      {/* ── 追問建議列：loading 結束後才顯示，避免閃爍 ── */}
-      {showSuggestRow && (
-        <div style={S.suggestRow}>
-          {suggestLoading ? (
-            <div style={S.suggestLoadingWrap}>
-              <span style={{ ...S.dot, animationDelay: "0ms" }} />
-              <span style={{ ...S.dot, animationDelay: "200ms" }} />
-              <span style={{ ...S.dot, animationDelay: "400ms" }} />
-              <span style={S.suggestLoadingText}>產生建議中...</span>
-            </div>
-          ) : (
-            currentQuestions.map((q, i) => (
-              <button
-                key={q}
-                style={{
-                  ...S.chip,
-                  borderLeft: isDynamic ? "2px solid #58a6ff55" : "none",
-                }}
-                onClick={() => onSend(q)}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = "#21262d")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = "#161b22")
-                }
-              >
-                {isDynamic ? "💡 " : "⚡ "}
-                {q}
-              </button>
-            ))
-          )}
-        </div>
-      )}
 
       {/* ── 輸入區 ── */}
       <div style={S.inputArea}>
@@ -223,6 +196,12 @@ const S = {
     animation: "blink 1s infinite",
     marginLeft: 2,
   },
+  streamElapsed: {
+    display: "block",
+    fontSize: 11,
+    color: "#8b949e",
+    marginTop: 6,
+  },
   typingWrap: {
     display: "flex",
     gap: 5,
@@ -236,33 +215,6 @@ const S = {
     background: "#58a6ff",
     display: "inline-block",
     animation: "dotBounce 1.2s infinite",
-  },
-  suggestRow: {
-    display: "flex",
-    gap: 6,
-    padding: "8px 32px",
-    overflowX: "auto",
-    flexWrap: "wrap",
-    borderTop: "1px solid #21262d",
-  },
-  suggestLoadingWrap: {
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-    padding: "4px 0",
-  },
-  suggestLoadingText: { fontSize: 11, color: "#8b949e", marginLeft: 4 },
-  chip: {
-    background: "#161b22",
-    border: "1px solid #30363d",
-    color: "#8b949e",
-    fontSize: 12,
-    padding: "5px 10px",
-    borderRadius: 14,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    transition: "background .15s",
-    flexShrink: 0,
   },
   inputArea: {
     borderTop: "1px solid #30363d",

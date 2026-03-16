@@ -17,19 +17,15 @@ export default function useAIChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streamText, setStreamText] = useState("");
-  const [suggestions, setSuggestions] = useState(null);
-  const [suggestLoading, setSuggestLoading] = useState(false);
 
   const bottomRef = useRef(null);
   const chatAreaRef = useRef(null);
   const inputRef = useRef(null);
   const textareaRef = useRef(null);
   const abortControllerRef = useRef(null);
-  const suggestAbortRef = useRef(null);
   const streamTextRef = useRef("");
   const startTimeRef = useRef(null);
   const userScrolledUpRef = useRef(false);
-  const prevSuggestionsRef = useRef(null);
   const activeIdRef = useRef(null);
 
   const activeId = store.activeConversationId;
@@ -37,7 +33,6 @@ export default function useAIChat() {
   const projectGroups = store.projectGroups;
   const messages = conversations[activeId]?.messages ?? [];
 
-  // 同步 activeIdRef 供非同步回調使用
   useEffect(() => {
     activeIdRef.current = activeId;
   }, [activeId]);
@@ -101,17 +96,12 @@ export default function useAIChat() {
   const switchConversation = useCallback(
     (id) => {
       if (loading) return;
-      // 取消進行中的追問建議
-      suggestAbortRef.current?.abort();
       setStore((prev) => ({ ...prev, activeConversationId: id }));
-      setSuggestions(null);
-      prevSuggestionsRef.current = null;
       setInput("");
     },
     [loading],
   );
 
-  // fix: 正確解構 projectGroup 參數
   const addConversation = useCallback(({ projectGroup } = {}) => {
     const conv = createConversation({ projectGroup: projectGroup || "未分組" });
     setStore((prev) => ({
@@ -119,8 +109,6 @@ export default function useAIChat() {
       conversations: { ...prev.conversations, [conv.id]: conv },
       activeConversationId: conv.id,
     }));
-    setSuggestions(null);
-    prevSuggestionsRef.current = null;
     setInput("");
   }, []);
 
@@ -143,7 +131,6 @@ export default function useAIChat() {
     setStore((prev) => {
       const conv = prev.conversations[id];
       if (!conv) return prev;
-      // 若新分組不在 projectGroups 陣列，自動補入
       const groups = prev.projectGroups.includes(projectGroup)
         ? prev.projectGroups
         : [
@@ -180,63 +167,6 @@ export default function useAIChat() {
       Math.min(Math.max(el.scrollHeight, lh * 3), lh * 8) + "px";
   }, []);
 
-  const generateSuggestions = useCallback(
-    async (currentMessages, forConvId) => {
-      // 取消上一輪未完成的追問請求
-      suggestAbortRef.current?.abort();
-      const controller = new AbortController();
-      suggestAbortRef.current = controller;
-
-      await new Promise((r) => setTimeout(r, 1000));
-      if (controller.signal.aborted) return;
-
-      setSuggestLoading(true);
-      try {
-        const history = currentMessages.slice(-MAX_HISTORY).map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
-        const prompt =
-          TC_PREFIX +
-          "根據以上對話內容，產生 3 個使用者接下來可能想追問的問題，必須與環境測試法規相關。" +
-          "所有問題必須使用繁體中文，不可有任何簡體字。" +
-          '只回傳 JSON 陣列，不要其他文字，格式：["問題一","問題二","問題三"]';
-        const res = await fetch(`${API_BASE}/api/ai/standards-query`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: prompt, history }),
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error("建議產生失敗");
-        const data = await res.json();
-        const match = (data.reply ?? "").match(/\[[\s\S]*\]/);
-        if (match) {
-          const parsed = JSON.parse(match[0]);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const next = parsed.slice(0, 3);
-            // fix: 只在對話未切換的情況下更新建議
-            if (activeIdRef.current === forConvId) {
-              prevSuggestionsRef.current = next;
-              setSuggestions(next);
-            }
-            return;
-          }
-        }
-        throw new Error("解析失敗");
-      } catch (err) {
-        if (err.name === "AbortError") return;
-        console.warn("[useAIChat] 追問建議失敗，保留上一輪", err);
-        if (activeIdRef.current === forConvId) {
-          setSuggestions(prevSuggestionsRef.current);
-        }
-      } finally {
-        if (!controller.signal.aborted) setSuggestLoading(false);
-      }
-    },
-    [],
-  );
-
-  // fix: abort 先執行，再清狀態，避免 finally 誤判
   const stopStream = useCallback(() => {
     abortControllerRef.current?.abort();
     const text = streamTextRef.current;
@@ -266,7 +196,6 @@ export default function useAIChat() {
     setStreamText("");
     streamTextRef.current = "";
     setLoading(false);
-    setSuggestLoading(false);
     abortControllerRef.current = null;
     inputRef.current?.focus();
   }, []);
@@ -283,14 +212,11 @@ export default function useAIChat() {
       updateMessages(newMessages);
       scrollToBottomForce();
       setLoading(true);
-      setSuggestLoading(true);
-      setSuggestions(null);
       setStreamText("");
       streamTextRef.current = "";
       startTimeRef.current = Date.now();
 
       const sendingConvId = activeIdRef.current;
-
       const history = newMessages
         .slice(0, -1)
         .slice(-MAX_HISTORY)
@@ -327,11 +253,9 @@ export default function useAIChat() {
             { role: "assistant", content: fullText, elapsed },
           ];
           updateMessages(finalMessages, sendingConvId);
-          generateSuggestions(finalMessages, sendingConvId);
         }
       } catch (err) {
         if (err.name !== "AbortError") {
-          setSuggestLoading(false);
           updateMessages(
             [
               ...newMessages,
@@ -353,17 +277,9 @@ export default function useAIChat() {
         }
       }
     },
-    [
-      messages,
-      input,
-      loading,
-      updateMessages,
-      generateSuggestions,
-      scrollToBottomForce,
-    ],
+    [messages, input, loading, updateMessages, scrollToBottomForce],
   );
 
-  // fix: 清除舊的 assistant 回覆後再重送
   const retryInTraditional = useCallback(
     (msgIndex) => {
       let userMsg = "";
@@ -374,7 +290,6 @@ export default function useAIChat() {
         }
       }
       if (!userMsg) return;
-      // 移除從該 assistant 訊息開始之後的所有訊息
       const trimmed = messages.slice(0, msgIndex);
       updateMessages(trimmed);
       sendMessage(userMsg);
@@ -383,17 +298,12 @@ export default function useAIChat() {
   );
 
   const clearConversation = useCallback(() => {
-    // 中止進行中的串流與追問
     abortControllerRef.current?.abort();
-    suggestAbortRef.current?.abort();
     updateMessages([]);
-    setSuggestions(null);
-    prevSuggestionsRef.current = null;
     setInput("");
     setLoading(false);
     setStreamText("");
     streamTextRef.current = "";
-    setSuggestLoading(false);
     inputRef.current?.focus();
   }, [updateMessages]);
 
@@ -415,8 +325,6 @@ export default function useAIChat() {
     input,
     loading,
     streamText,
-    suggestions,
-    suggestLoading,
     bottomRef,
     chatAreaRef,
     inputRef,
