@@ -73,9 +73,9 @@
 | LINE Bot | `backend/app/line.py` | 狀態查詢、推播、LINE 簽名驗證、User ID 白名單 |
 | 異常紀錄 | `backend/app/errors.py` | EMERGENCY 自動寫入 error_logs |
 | AI 法規諮詢後端 | `backend/app/ai.py` | 串流 + 非串流，gemma3:4b，system prompt 快取，warm-up 預載 |
-| AI 法規諮詢前端 | `client/src/ai/` | 多對話管理、專案分組、串流輸出、追問建議、localStorage 持久化 |
+| AI 法規諮詢前端 | `client/src/ai/` | 多對話管理、專案分組、拖曳移動分組、串流計時器、免責聲明精簡、localStorage 持久化 |
 | 儀表板 | `client/src/Dashboard.jsx` | 六狀態、趨勢圖、步驟進度條、倒數計時器、active prop 控制輪詢 |
-| SOP 執行頁 | `client/src/SOPPage.jsx` | 三步驟法規選擇、SP+PV 波型曲線、執行資訊面板、防重複提交 |
+| SOP 執行頁 | `client/src/SOPPage.jsx` | 三步驟法規選擇、SP+PV 波型曲線、執行資訊面板、防重複提交、切換回來立刻打 API |
 | 異常看板 | `client/src/Errorlog.jsx` | 統計卡片 + 完整紀錄列表，60s 自動刷新 |
 | 全域路由 | `client/src/App.jsx` | CSS display 切換，四頁面常駐 DOM，active prop 傳遞 |
 
@@ -87,7 +87,7 @@
 4. **後端與前端系統性優化**（✅ 完成）
 5. **後端架構優化**（✅ 完成）
 6. **LINE Bot 整合**（✅ 完成）
-7. **AI 諮詢 UI / 效能優化**（進行中）— 見「已知待修問題」
+7. **AI 諮詢 UI / 效能優化**（✅ 完成）— 建議功能移除、串流計時器、拖曳分組、system prompt 重寫、SOPPage 切換速度優化
 8. **AI 治具管理助手**（`/api/ai/fixture-recommend`）
 9. **AI 設備排程預估**（`/api/ai/schedule-estimate`）
 10. **Phase 3**：多台設備架構、治具資料庫、認證系統、RS-485 真實通訊
@@ -96,35 +96,14 @@
 
 ## 已知待修問題
 
-### 高優先（明顯影響體驗）
+### 待處理
 
-- `useAIChat.jsx` `generateSuggestions` 延遲 3s → 改為 1s
-- `ai.py` 加入 `num_ctx: 2048`、`temperature: 0.3`，降低推理時間
-- `ChatSidebar.jsx` `grouped` 和 `sortedGroups` 缺少 `useMemo`，對話多時每次 render 都重算
-- `ChatArea.jsx` `suggestRow` 用 `key={i}`，應改為 `key={q}`
-
-### 中優先（UX 改善）
-
-- `ChatSidebar.jsx` 對話移動分組改為拖曳操作，移除現有的下拉選單方式
-- `ChatSidebar.jsx` 對話標題支援雙擊直接進入編輯模式
+- `ChatSidebar.jsx` 雙擊標題直接進入編輯模式
 - `ChatSidebar.jsx` 分組支援點擊摺疊/展開
-- `ChatArea.jsx` 串流中在泡泡右下角顯示已經過秒數，完成後才顯示最終時間
-- `ChatArea.jsx` 空白頁預設問題從題庫隨機抽取，每次載入不同
-- `ChatArea.jsx` 串流訊息泡泡右下角加小型停止按鈕，就近操作
-
-### 低優先（效能微調）
-
-- `useAIChat.jsx` `sendMessage` 的 `useCallback` 依賴陣列包含 `messages`，每次訊息更新都重建，應改用 `useRef` 存 messages
-- `useAIChat.jsx` `handleInputChange`、`handleKeyDown` 缺少 `useCallback`，每次 render 產生新函式
-- `ai.py` 獨立 `/api/ai/suggest` 端點供追問建議專用（timeout 30s），不佔用主對話資源
-- `ChatSidebar.jsx` 側欄收合時顯示目前對話縮略，而非完全空白
-
-### UI 細節
-
-- `ChatSidebar.jsx` 刪除確認按鈕字體 11px 太小，觸控裝置難點
-- `ChatArea.jsx` 建議列 chip 改為橫向滑動，避免長文字換行爆版
-- `MessageBubble.jsx` 免責聲明只在第一則完整顯示，後續改為灰色小圖示，減少視覺干擾
-- 加入快捷鍵：`Cmd+K` 新對話、`Esc` 停止串流
+- `ChatSidebar.jsx` 側欄收合時顯示目前對話縮略
+- `ChatSidebar.jsx` 刪除確認按鈕字體 11px 太小
+- `useAIChat.jsx` `sendMessage` 的 `useCallback` 依賴陣列包含 `messages`，應改用 `useRef`
+- 快捷鍵：`Cmd+K` 新對話、`Esc` 停止串流
 
 ---
 
@@ -145,9 +124,10 @@
 
 - 模型：`gemma3:4b`（本機 Ollama）；備用：`gemma3:12b`
 - 端點：`/api/ai/standards-query`（非串流）、`/api/ai/standards-query-stream`（串流）
-- system prompt：英文指令，78 個測試條件名稱（約 800 tokens），模組載入快取
+- system prompt：英文指令，約 150 tokens；不含條目清單，靠模型訓練知識回答；限制五大法規與溫箱設備
 - TC_PREFIX：`"[MUST reply in Traditional Chinese zh-TW ONLY, NO Simplified Chinese] "`，前端附加
-- 多輪對話：MAX_HISTORY = 4；追問建議 3s 延遲，切換對話自動 abort
+- 多輪對話：MAX_HISTORY = 4
+- 追問建議功能：已移除（Ollama 單佇列限制，無法同步產生）
 - localStorage key：`dqa_ai_chats_v2`
 
 ### LINE Bot
