@@ -93,7 +93,12 @@ async def standards_query(req: QueryRequest):
     async with httpx.AsyncClient(timeout=180.0) as client:
         response = await client.post(
             OLLAMA_URL,
-            json={"model": OLLAMA_MODEL, "messages": messages, "stream": False},
+            json={
+                "model": OLLAMA_MODEL,
+                "messages": messages,
+                "stream": False,
+                "options": {"num_ctx": 2048, "temperature": 0.3},
+            },
         )
         response.raise_for_status()
         data = response.json()
@@ -110,7 +115,12 @@ async def standards_query_stream(req: QueryRequest):
             async with client.stream(
                 "POST",
                 OLLAMA_URL,
-                json={"model": OLLAMA_MODEL, "messages": messages, "stream": True},
+                json={
+                    "model": OLLAMA_MODEL,
+                    "messages": messages,
+                    "stream": True,
+                    "options": {"num_ctx": 2048, "temperature": 0.3},
+                },
             ) as response:
                 async for line in response.aiter_lines():
                     if line.strip():

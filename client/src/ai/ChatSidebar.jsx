@@ -1,5 +1,5 @@
 // client/src/ai/ChatSidebar.jsx
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { exportChat } from "./aiStorage";
 
 export default function ChatSidebar({
@@ -25,18 +25,22 @@ export default function ChatSidebar({
   const [movingId, setMovingId] = useState(null);
 
   // 以 projectGroups 為主，「未分組」永遠最後
-  const sortedGroups = [
-    ...projectGroups.filter((g) => g !== "未分組"),
-    "未分組",
-  ];
+  const sortedGroups = useMemo(
+    () => [...projectGroups.filter((g) => g !== "未分組"), "未分組"],
+    [projectGroups],
+  );
 
   // 依分組聚合對話
-  const grouped = sortedGroups.reduce((acc, g) => {
-    acc[g] = Object.values(conversations)
-      .filter((c) => c.projectGroup === g)
-      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-    return acc;
-  }, {});
+  const grouped = useMemo(
+    () =>
+      sortedGroups.reduce((acc, g) => {
+        acc[g] = Object.values(conversations)
+          .filter((c) => c.projectGroup === g)
+          .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        return acc;
+      }, {}),
+    [sortedGroups, conversations],
+  );
 
   const commitRename = () => {
     if (editingTitle.trim()) onRename(editingId, editingTitle.trim());

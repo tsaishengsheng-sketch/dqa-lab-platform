@@ -92,7 +92,7 @@ export default function ChatArea({
           ) : (
             currentQuestions.map((q, i) => (
               <button
-                key={i}
+                key={q}
                 style={{
                   ...S.chip,
                   borderLeft: isDynamic ? "2px solid #58a6ff55" : "none",

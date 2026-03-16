@@ -8,8 +8,7 @@ import {
 } from "./aiStorage";
 
 const API_BASE = "http://localhost:8000";
-const TC_PREFIX =
-  "[MUST reply in Traditional Chinese zh-TW ONLY, NO Simplified Chinese] ";
+const TC_PREFIX = "[MUST reply in Traditional Chinese zh-TW ONLY, NO Simplified Chinese] ";
 const MAX_HISTORY = 4;
 
 export default function useAIChat() {
@@ -74,8 +73,13 @@ export default function useAIChat() {
       if (!conv) return prev;
       const isFirstMsg = conv.messages.length === 0 && newMsgs.length > 0;
       const title = isFirstMsg
-        ? newMsgs[0].content.slice(0, 20) +
-          (newMsgs[0].content.length > 20 ? "…" : "")
+        ? (() => {
+            const raw = newMsgs[0].content.slice(0, 30);
+            const cut = raw.search(/[，。？！,?!
+]/);
+            return (cut > 0 && cut <= 24 ? raw.slice(0, cut) : raw.slice(0, 20)) +
+              (newMsgs[0].content.length > 20 ? "…" : "");
+          })()
         : conv.title;
       return {
         ...prev,
@@ -140,11 +144,7 @@ export default function useAIChat() {
       // 若新分組不在 projectGroups 陣列，自動補入
       const groups = prev.projectGroups.includes(projectGroup)
         ? prev.projectGroups
-        : [
-            ...prev.projectGroups.filter((g) => g !== "未分組"),
-            projectGroup,
-            "未分組",
-          ];
+        : [...prev.projectGroups.filter((g) => g !== "未分組"), projectGroup, "未分組"];
       return {
         ...prev,
         projectGroups: groups,
@@ -165,70 +165,67 @@ export default function useAIChat() {
     }));
   }, []);
 
-  const handleInputChange = (e) => {
+  const handleInputChange = useCallback((e) => {
     setInput(e.target.value);
     const el = e.target;
     el.style.height = "auto";
     const lh = 22;
     el.style.height =
       Math.min(Math.max(el.scrollHeight, lh * 3), lh * 8) + "px";
-  };
+  }, []);
 
-  const generateSuggestions = useCallback(
-    async (currentMessages, forConvId) => {
-      // 取消上一輪未完成的追問請求
-      suggestAbortRef.current?.abort();
-      const controller = new AbortController();
-      suggestAbortRef.current = controller;
+  const generateSuggestions = useCallback(async (currentMessages, forConvId) => {
+    // 取消上一輪未完成的追問請求
+    suggestAbortRef.current?.abort();
+    const controller = new AbortController();
+    suggestAbortRef.current = controller;
 
-      await new Promise((r) => setTimeout(r, 3000));
-      if (controller.signal.aborted) return;
+    await new Promise((r) => setTimeout(r, 1000));
+    if (controller.signal.aborted) return;
 
-      setSuggestLoading(true);
-      try {
-        const history = currentMessages.slice(-MAX_HISTORY).map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
-        const prompt =
-          TC_PREFIX +
-          "根據以上對話內容，產生 3 個使用者接下來可能想追問的問題，必須與環境測試法規相關。" +
-          "所有問題必須使用繁體中文，不可有任何簡體字。" +
-          '只回傳 JSON 陣列，不要其他文字，格式：["問題一","問題二","問題三"]';
-        const res = await fetch(`${API_BASE}/api/ai/standards-query`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: prompt, history }),
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error("建議產生失敗");
-        const data = await res.json();
-        const match = (data.reply ?? "").match(/\[[\s\S]*\]/);
-        if (match) {
-          const parsed = JSON.parse(match[0]);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const next = parsed.slice(0, 3);
-            // fix: 只在對話未切換的情況下更新建議
-            if (activeIdRef.current === forConvId) {
-              prevSuggestionsRef.current = next;
-              setSuggestions(next);
-            }
-            return;
+    setSuggestLoading(true);
+    try {
+      const history = currentMessages.slice(-MAX_HISTORY).map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+      const prompt =
+        TC_PREFIX +
+        "根據以上對話內容，產生 3 個使用者接下來可能想追問的問題，必須與環境測試法規相關。" +
+        "所有問題必須使用繁體中文，不可有任何簡體字。" +
+        '只回傳 JSON 陣列，不要其他文字，格式：["問題一","問題二","問題三"]';
+      const res = await fetch(`${API_BASE}/api/ai/standards-query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: prompt, history }),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error("建議產生失敗");
+      const data = await res.json();
+      const match = (data.reply ?? "").match(/\[[\s\S]*\]/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const next = parsed.slice(0, 3);
+          // fix: 只在對話未切換的情況下更新建議
+          if (activeIdRef.current === forConvId) {
+            prevSuggestionsRef.current = next;
+            setSuggestions(next);
           }
+          return;
         }
-        throw new Error("解析失敗");
-      } catch (err) {
-        if (err.name === "AbortError") return;
-        console.warn("[useAIChat] 追問建議失敗，保留上一輪", err);
-        if (activeIdRef.current === forConvId) {
-          setSuggestions(prevSuggestionsRef.current);
-        }
-      } finally {
-        if (!controller.signal.aborted) setSuggestLoading(false);
       }
-    },
-    [],
-  );
+      throw new Error("解析失敗");
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.warn("[useAIChat] 追問建議失敗，保留上一輪", err);
+      if (activeIdRef.current === forConvId) {
+        setSuggestions(prevSuggestionsRef.current);
+      }
+    } finally {
+      if (!controller.signal.aborted) setSuggestLoading(false);
+    }
+  }, []);
 
   // fix: abort 先執行，再清狀態，避免 finally 誤判
   const stopStream = useCallback(() => {
@@ -313,9 +310,7 @@ export default function useAIChat() {
         }
 
         if (!controller.signal.aborted && fullText.trim()) {
-          const elapsed = ((Date.now() - startTimeRef.current) / 1000).toFixed(
-            1,
-          );
+          const elapsed = ((Date.now() - startTimeRef.current) / 1000).toFixed(1);
           const finalMessages = [
             ...newMessages,
             { role: "assistant", content: fullText, elapsed },
@@ -326,16 +321,13 @@ export default function useAIChat() {
       } catch (err) {
         if (err.name !== "AbortError") {
           setSuggestLoading(false);
-          updateMessages(
-            [
-              ...newMessages,
-              {
-                role: "assistant",
-                content: "⚠️ 連線失敗，請確認後端與 Ollama 是否正常運行。",
-              },
-            ],
-            sendingConvId,
-          );
+          updateMessages([
+            ...newMessages,
+            {
+              role: "assistant",
+              content: "⚠️ 連線失敗，請確認後端與 Ollama 是否正常運行。",
+            },
+          ], sendingConvId);
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -347,14 +339,7 @@ export default function useAIChat() {
         }
       }
     },
-    [
-      messages,
-      input,
-      loading,
-      updateMessages,
-      generateSuggestions,
-      scrollToBottomForce,
-    ],
+    [messages, input, loading, updateMessages, generateSuggestions, scrollToBottomForce],
   );
 
   // fix: 清除舊的 assistant 回覆後再重送
@@ -391,12 +376,12 @@ export default function useAIChat() {
     inputRef.current?.focus();
   }, [updateMessages]);
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = useCallback((e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
-  };
+  }, [sendMessage]);
 
   return {
     activeId,
