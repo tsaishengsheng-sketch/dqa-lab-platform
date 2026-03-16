@@ -8,8 +8,6 @@ import {
 } from "./aiStorage";
 
 const API_BASE = "http://localhost:8000";
-const TC_PREFIX =
-  "[MUST reply in Traditional Chinese zh-TW ONLY, NO Simplified Chinese] ";
 const MAX_HISTORY = 4;
 
 export default function useAIChat() {
@@ -235,7 +233,7 @@ export default function useAIChat() {
         const res = await fetch(`${API_BASE}/api/ai/standards-query-stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: TC_PREFIX + rawMsg, history }),
+          body: JSON.stringify({ message: rawMsg, history }),
           signal: controller.signal,
         });
         if (!res.ok) throw new Error("串流請求失敗");
