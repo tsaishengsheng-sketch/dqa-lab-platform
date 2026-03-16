@@ -1,0 +1,147 @@
+# backend/app/line.py
+import os
+import hmac
+import hashlib
+import base64
+import httpx
+from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import JSONResponse
+
+router = APIRouter(prefix="/api/line", tags=["line"])
+
+LINE_API_URL = "https://api.line.me/v2/bot/message/push"
+LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
+LINE_USER_ID = os.getenv("LINE_USER_ID", "")
+
+
+def _verify_signature(body: bytes, signature: str) -> bool:
+    """驗證來自 LINE 的 Webhook 請求簽名，確保請求來源合法"""
+    hash_ = hmac.new(
+        LINE_CHANNEL_SECRET.encode("utf-8"),
+        body,
+        hashlib.sha256,
+    ).digest()
+    expected = base64.b64encode(hash_).decode("utf-8")
+    return hmac.compare_digest(expected, signature)
+
+
+async def push_message(text: str):
+    """主動推播訊息給指定 User ID"""
+    if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_USER_ID:
+        print("[LINE] 未設定 TOKEN 或 USER_ID，跳過推播")
+        return
+
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.post(
+                LINE_API_URL,
+                headers={
+                    "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "to": LINE_USER_ID,
+                    "messages": [{"type": "text", "text": text}],
+                },
+                timeout=10.0,
+            )
+            if res.status_code != 200:
+                print(f"[LINE] 推播失敗：{res.status_code} {res.text}")
+        except Exception as e:
+            print(f"[LINE] 推播例外：{e}")
+
+
+def _handle_command(text: str, cache: dict) -> str:
+    """處理使用者傳來的指令，回傳回覆文字"""
+    cmd = text.strip().lower()
+
+    # 查詢所有設備狀態
+    if cmd in ("狀態", "status", "s"):
+        lines = ["📊 設備狀態\n"]
+        for device_id, item in cache.items():
+            status = item.get("status", "OFFLINE")
+            temp = item.get("temperature", 0.0)
+            emoji = {
+                "RUNNING": "🟢",
+                "PAUSED": "🟡",
+                "EMERGENCY": "🔴",
+                "FINISHING": "🔵",
+                "IDLE": "⚪",
+                "OFFLINE": "⚫",
+            }.get(status, "⚫")
+            lines.append(f"{emoji} {device_id}: {status} | {temp:.1f}°C")
+        return "\n".join(lines)
+
+    # 查詢單一設備
+    for device_id in cache:
+        short = device_id.replace("KSON_", "").lower()
+        if cmd in (device_id.lower(), short):
+            item = cache[device_id]
+            status = item.get("status", "OFFLINE")
+            temp = item.get("temperature", 0.0)
+            humi = item.get("humidity", 0.0)
+            sop = item.get("running_sop_name", "—")
+            return (
+                f"📟 {device_id}\n"
+                f"狀態：{status}\n"
+                f"溫度：{temp:.1f} °C\n"
+                f"濕度：{humi:.1f} %RH\n"
+                f"執行中：{sop}"
+            )
+
+    # 說明
+    if cmd in ("help", "?", "幫助", "h"):
+        return (
+            "📋 可用指令\n\n"
+            "狀態 / status — 查詢所有設備\n"
+            "CH01 ~ CH05 — 查詢單一設備\n"
+            "help — 顯示此說明"
+        )
+
+    return "❓ 未知指令，輸入 help 查看可用指令。"
+
+
+@router.post("/webhook")
+async def webhook(request: Request):
+    """接收 LINE Webhook 事件"""
+    body = await request.body()
+    signature = request.headers.get("X-Line-Signature", "")
+
+    # 有簽名才驗證，Verify 測試或無簽名請求直接通過
+    if signature and LINE_CHANNEL_SECRET:
+        if not _verify_signature(body, signature):
+            raise HTTPException(status_code=400, detail="Invalid signature")
+
+    import json
+
+    data = json.loads(body)
+    cache = request.app.state.AICM_CACHE
+
+    for event in data.get("events", []):
+        # 只處理文字訊息
+        if event.get("type") != "message":
+            continue
+        if event.get("message", {}).get("type") != "text":
+            continue
+
+        user_text = event["message"]["text"]
+        reply_token = event.get("replyToken")
+        reply_text = _handle_command(user_text, cache)
+
+        # 用 reply token 回覆
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                "https://api.line.me/v2/bot/message/reply",
+                headers={
+                    "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "replyToken": reply_token,
+                    "messages": [{"type": "text", "text": reply_text}],
+                },
+                timeout=10.0,
+            )
+
+    return JSONResponse(content={"status": "ok"})

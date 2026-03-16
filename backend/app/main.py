@@ -1,3 +1,8 @@
+from dotenv import load_dotenv
+from pathlib import Path
+
+load_dotenv(Path(__file__).parent.parent / ".env")
+
 import asyncio
 import datetime
 import json
@@ -11,6 +16,7 @@ from .sop import router as sop_router, execution_router, DEVICE_IDS
 from .reports import router as reports_router
 from .errors import router as errors_router
 from .ai import router as ai_router, _warmup_ollama
+from .line import router as line_router, push_message
 from .models import SessionLocal, DeviceData, ErrorLog, DeviceState
 from .standards import get_ramp_rate, get_standard
 from .utils import _now_utc, _save_device_state
@@ -80,6 +86,7 @@ app.include_router(execution_router)
 app.include_router(reports_router)
 app.include_router(errors_router)
 app.include_router(ai_router)
+app.include_router(line_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -332,6 +339,14 @@ async def emergency_stop(device_id: str):
     )
     _save_device_state(device_id, device)
     print(f"🚨 [{device_id}] EMERGENCY STOP")
+    # 推播 LINE 通知
+    import asyncio
+
+    asyncio.create_task(
+        push_message(
+            f"🚨 [{device_id}] 緊急停止已觸發\n溫度：{device.get('temperature', 0.0):.1f}°C"
+        )
+    )
     return {"status": "success", "message": f"{device_id} 緊急停止已觸發"}
 
 
@@ -447,6 +462,9 @@ async def data_simulator():
                     )
                     _save_device_state(device_id, item)
                     print(f"✅ [{device_id}] 降溫完成，回待機。")
+                    asyncio.create_task(
+                        push_message(f"✅ [{device_id}] 測試完成，已回到待機狀態。")
+                    )
 
             elif status == "EMERGENCY":
                 item["temperature"] = round(
