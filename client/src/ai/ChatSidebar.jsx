@@ -49,12 +49,11 @@ export default function ChatSidebar({
     setEditingId(null);
   };
 
-  // fix: 先 addProjectGroup，再 addConversation 放入新分組
+  // 新增分組後不自動建立新對話，讓使用者自行決定要不要在新分組裡開對話
   const commitAddGroup = () => {
     const name = newGroupInput.trim();
     if (name) {
       onAddGroup(name);
-      onAdd({ projectGroup: name });
     }
     setNewGroupInput("");
     setShowGroupInput(false);

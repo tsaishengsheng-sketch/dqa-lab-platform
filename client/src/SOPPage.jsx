@@ -528,9 +528,21 @@ const SOPPage = ({ active = true }) => {
       .catch(() => setTreeLoaded(true));
   }, []);
 
-  // fix: active 為 false 時不啟動 interval
+  // fix: active 為 false 時不啟動 interval；切換回來時立刻打一次 API 不等 interval
   useEffect(() => {
     if (!active) return;
+
+    // 立刻打一次，避免切換回來要等 3 秒
+    axios
+      .get(`${API}/api/devices`)
+      .then((r) => {
+        const map = {};
+        r.data.forEach((d) => {
+          map[d.device_id] = d;
+        });
+        setAllDevices(map);
+      })
+      .catch(() => {});
 
     const t = setInterval(() => {
       axios
