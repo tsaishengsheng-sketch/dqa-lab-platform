@@ -141,9 +141,9 @@ async def standards_query_stream(req: QueryRequest):
                     "messages": messages,
                     "stream": True,
                     "options": {
-                        "num_ctx": 4096,
-                        "temperature": 0.4,
-                        "top_p": 0.9,
+                        "num_ctx": 8192,
+                        "temperature": 0.2,
+                        "top_p": 0.8,
                     },
                 },
             ) as response:
