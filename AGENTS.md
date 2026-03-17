@@ -72,7 +72,7 @@
 | CSV 報告 | `backend/app/reports.py` | ISO 17025 格式，big5，查詢上限 10000 筆 |
 | LINE Bot | `backend/app/line.py` | 狀態查詢、推播、LINE 簽名驗證、User ID 白名單 |
 | 異常紀錄 | `backend/app/errors.py` | EMERGENCY 自動寫入 error_logs |
-| AI 法規諮詢後端 | `backend/app/ai.py` | 串流 + 非串流，gemma3:4b，system prompt 快取，warm-up 預載 |
+| AI 法規諮詢後端 | `backend/app/ai.py` | 串流 + 非串流，llama3.1:8b，system prompt 快取，warm-up 預載 |
 | AI 法規諮詢前端 | `client/src/ai/` | 多對話管理、專案分組、拖曳移動分組、串流計時器、免責聲明精簡、localStorage 持久化 |
 | 儀表板 | `client/src/Dashboard.jsx` | 六狀態、趨勢圖、步驟進度條、倒數計時器、active prop 控制輪詢 |
 | SOP 執行頁 | `client/src/SOPPage.jsx` | 三步驟法規選擇、SP+PV 波型曲線、執行資訊面板、防重複提交、切換回來立刻打 API |
@@ -110,7 +110,7 @@
 
 ### AI 模組
 
-- 模型：`gemma3:4b`（本機 Ollama）；備用：`gemma3:12b`
+- 模型：`llama3.1:8b`（本機 Ollama）
 - 端點：`/api/ai/standards-query`（非串流）、`/api/ai/standards-query-stream`（串流）
 - system prompt：英文指令，約 150 tokens；不含條目清單，靠模型訓練知識回答；限制五大法規與溫箱設備
 - 繁體中文強制：由 system prompt 統一管理，前端不再附加 TC_PREFIX
