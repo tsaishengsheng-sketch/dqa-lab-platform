@@ -1,3 +1,5 @@
+# SOP 模組：提供標準樹與 SOP 列表、啟動 SOP 測試、取得 SOP 執行紀錄等功能
+
 import json
 import datetime
 from fastapi import APIRouter, HTTPException, Body, Request
@@ -7,26 +9,25 @@ from .models import SessionLocal, SopTemplate, DeviceState, SopExecution, StepRe
 from .standards import STANDARDS_AND_SOPS, get_standard_tree
 from .utils import _save_device_state
 
+# 導出 API 路由器
 router = APIRouter()
 execution_router = APIRouter(prefix="/api/sop-executions", tags=["sop-executions"])
 
+# 定義設備 ID 清單（目前支援的五個設備）
 DEVICE_IDS = ["KSON_CH01", "KSON_CH02", "KSON_CH03", "KSON_CH04", "KSON_CH05"]
 
 
+# 呈現 SOP 列表用的資料類型
 class SopResponse(BaseModel):
-    sop_id: str
-    name: str
-    test_type: str
-    version: str
-    steps: List[dict]
-    description: Optional[str] = ""
+    sop_id: str  # SOP ID
+    name: str  # SOP 名稱
+    test_type: str  # 測試類型（ chamber）
+    version: str  # SOP 版本
+    steps: List[dict]  # SOP 步驟清單
+    description: Optional[str] = ""  # SOP 說明
 
 
-# ============================================================
-# 標準樹 & SOP 列表
-# ============================================================
-
-
+# 標準樹與 SOP 列表路由
 @router.get("/standards/tree")
 def get_standards_tree():
     """完整三層標準樹：法規 → 版本 → 測試條件（不含 steps 欄位，節省傳輸量）"""
@@ -101,11 +102,7 @@ def list_sops():
     return sops
 
 
-# ============================================================
-# 啟動 SOP
-# ============================================================
-
-
+# 啟動 SOP 路由
 @router.post("/start")
 async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
     """啟動指定設備的 SOP 測試"""
@@ -160,33 +157,29 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
     return {"status": "success", "message": f"{device_id} 已啟動 {sop_name}"}
 
 
-# ============================================================
-# SOP 執行紀錄
-# ============================================================
-
-
+# SOP 執行紀錄路由
 class StepRecordSchema(BaseModel):
-    step_id: int
-    completed: bool
-    parameters: Optional[Dict[str, Any]] = None
-    photos: Optional[List[str]] = None
+    step_id: int  # 步驟 ID
+    completed: bool  # 是否完成
+    parameters: Optional[Dict[str, Any]] = None  # 參數設定
+    photos: Optional[List[str]] = None  # 照片列表
 
 
 class ExecutionCreate(BaseModel):
-    sop_id: str
-    device_id: Optional[str] = None
-    operator: Optional[str] = None
-    test_started_at: Optional[datetime.datetime] = None
-    test_ended_at: Optional[datetime.datetime] = None
+    sop_id: str  # SOP ID
+    device_id: Optional[str] = None  # 設備 ID（選填）
+    operator: Optional[str] = None  # 操作者名稱（選填）
+    test_started_at: Optional[datetime.datetime] = None  # 測試開始時間（選填）
+    test_ended_at: Optional[datetime.datetime] = None  # 測試結束時間（選填）
     steps: List[StepRecordSchema]
 
 
 class ExecutionResponse(BaseModel):
-    id: int
-    sop_id: str
-    device_id: Optional[str] = None
-    operator: Optional[str] = None
-    created_at: datetime.datetime
+    id: int  # 執行 ID
+    sop_id: str  # SOP ID
+    device_id: Optional[str] = None  # 設備 ID（選填）
+    operator: Optional[str] = None  # 操作者名稱（選填）
+    created_at: datetime.datetime  # 創建時間
     steps: List[StepRecordSchema]
 
 
