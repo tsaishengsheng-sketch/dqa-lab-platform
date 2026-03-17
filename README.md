@@ -103,7 +103,7 @@ make dev
 
 後端：FastAPI、Pydantic v2、SQLAlchemy 2.0、asyncio、SQLite、httpx、Alembic
 前端：React 18、Vite、Recharts、Axios
-AI：Ollama（本機）、gemma3:4b
+AI：Ollama（本機）、llama3.1:8b
 環境：Python 3.9+、Node.js 18+、macOS/Linux（需要 socat）
 
 ## 延伸文件
