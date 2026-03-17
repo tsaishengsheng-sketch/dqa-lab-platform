@@ -30,8 +30,9 @@ def _build_system_prompt() -> str:
         "你是工業環境測試法規顧問，專注於溫箱測試。",
         "只能用繁體中文回答，禁止簡體中文。繁體範例：設備、測試、標準、循環、穩態。",
         "回答簡潔不重複，推薦時標注法規正式版本號（例如 IEC 60068-2-1:2007）。",
-        "",
-        "本系統支援的測試條件：",
+        "依據下方表格回答，若表格沒寫就回「查無此資料」，禁止瞎掰。",
+        "| 標準 | 測試名稱 |",
+        "|---|---|",
     ]
 
     # 取得各個標準的測試名稱
@@ -40,7 +41,7 @@ def _build_system_prompt() -> str:
         for ver_data in std_data["versions"].values():
             for test_data in ver_data["tests"].values():
                 test_names.append(test_data["name"])
-        lines.append(f"{std_key}：{'、'.join(test_names)}")
+        lines.append(f"| {std_key} | {'、'.join(test_names)} |")
 
     # 將內容組合成系統提示
     _SYSTEM_PROMPT_CACHE = "\n".join(lines)
@@ -106,7 +107,7 @@ async def standards_query(req: QueryRequest):
                 "model": OLLAMA_MODEL,
                 "messages": messages,
                 "stream": False,
-                "options": {"num_ctx": 2048, "temperature": 0.0, "top_p": 0.9},
+                "options": {"num_ctx": 4096, "temperature": 0.1, "top_p": 0.4},
             },
         )
 
@@ -141,9 +142,9 @@ async def standards_query_stream(req: QueryRequest):
                     "messages": messages,
                     "stream": True,
                     "options": {
-                        "num_ctx": 8192,
-                        "temperature": 0.2,
-                        "top_p": 0.8,
+                        "num_ctx": 4096,
+                        "temperature": 0.1,
+                        "top_p": 0.4,
                     },
                 },
             ) as response:
