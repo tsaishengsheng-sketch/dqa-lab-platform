@@ -26,6 +26,8 @@ background_tasks = set()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
+    # 初始化資料庫結構
     from .models import init_db
 
     init_db()
