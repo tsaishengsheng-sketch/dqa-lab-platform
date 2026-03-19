@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import {
   ComposedChart,
@@ -47,11 +47,16 @@ function fmtMin(min) {
   return h > 0 ? `${h}h${String(m).padStart(2, "0")}m` : `${m}m`;
 }
 
+// fix #13: generateSP 低溫路徑與後端 _calc_estimated_end_at 對齊
+// 路徑：
+//   有 low_temp < ambient：ambient→low→(low→high→dwell→low→dwell)×cycles→ambient
+//   有 low_temp >= ambient：ambient→high→(dwell→low→dwell→high)×cycles→ambient
+//   無 low_temp：ambient→target→dwell→ambient
 function generateSP(sop) {
   if (!sop) return [];
   const ramp = sop.ramp_rate || 1;
   const high = sop.high_temperature ?? sop.target_temperature ?? 25;
-  const low = sop.low_temperature ?? 25;
+  const low = sop.low_temperature ?? null;
   const dwell = (sop.dwell_time_hours || 1) * 60;
   const cycles = sop.cycles || 1;
   const ambientTemp = 25;
@@ -75,9 +80,18 @@ function generateSP(sop) {
     }
   };
 
-  const isCycle = cycles > 1 && sop.low_temperature != null;
-
-  if (isCycle) {
+  if (low !== null && low < ambientTemp) {
+    // 低溫測試：ambient → low → (low→high→dwell→low→dwell)×cycles → ambient
+    pushRamp(ambientTemp, low);
+    for (let c = 0; c < cycles; c++) {
+      pushRamp(low, high);
+      pushDwell(high, dwell);
+      pushRamp(high, low);
+      pushDwell(low, dwell);
+    }
+    pushRamp(low, ambientTemp);
+  } else if (low !== null) {
+    // 雙溫循環（low >= ambient）：ambient → high → (dwell→low→dwell→high)×cycles → ambient
     pushRamp(ambientTemp, high);
     for (let c = 0; c < cycles; c++) {
       pushDwell(high, dwell);
@@ -87,11 +101,10 @@ function generateSP(sop) {
     }
     pushRamp(low, ambientTemp);
   } else {
-    const startTemp = low < ambientTemp ? low : ambientTemp;
-    const targetTemp = high !== ambientTemp ? high : low;
-    pushRamp(startTemp, targetTemp);
-    pushDwell(targetTemp, dwell);
-    pushRamp(targetTemp, ambientTemp);
+    // 單溫段
+    pushRamp(ambientTemp, high);
+    pushDwell(high, dwell);
+    pushRamp(high, ambientTemp);
   }
 
   return pts.map((p) => ({
@@ -299,14 +312,12 @@ function mergeSpPv(spData, pvData) {
 
 const TempChart = ({ sop, pvData, startedAt }) => {
   const spData = React.useMemo(() => generateSP(sop), [sop]);
-
   const pvWithMin = React.useMemo(() => {
     if (!pvData || !startedAt) return [];
     return pvData
       .map((p) => ({ ...p, min: toElapsedMin(startedAt, p.full_time) }))
       .filter((p) => p.min != null);
   }, [pvData, startedAt]);
-
   const merged = React.useMemo(
     () => mergeSpPv(spData, pvWithMin),
     [spData, pvWithMin],
@@ -454,7 +465,25 @@ const TempChart = ({ sop, pvData, startedAt }) => {
   );
 };
 
-// fix: 加入 active prop，頁面隱藏時暫停輪詢
+// fix #1: 從 sop_id 反查標準樹，還原三步驟選擇
+function restoreSelectionFromSopId(sopId, standardTree) {
+  if (!sopId || !standardTree) return null;
+  for (const [stdKey, stdData] of Object.entries(standardTree)) {
+    for (const [verKey, verData] of Object.entries(stdData.versions || {})) {
+      for (const [testKey, testData] of Object.entries(verData.tests || {})) {
+        if (testData.sop_id === sopId) {
+          return {
+            selectedStd: stdKey,
+            selectedVer: verKey,
+            selectedTest: testKey,
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 const SOPPage = ({ active = true }) => {
   const [selectedDevice, setSelectedDevice] = useState("KSON_CH01");
   const [allDevices, setAllDevices] = useState({});
@@ -465,9 +494,14 @@ const SOPPage = ({ active = true }) => {
   const [standardTree, setStandardTree] = useState({});
   const [treeLoaded, setTreeLoaded] = useState(false);
   const [startError, setStartError] = useState("");
-  // fix: 防重複提交 saving state
   const [saving, setSaving] = useState(false);
+  // fix #2: operator 輸入
+  const [operator, setOperator] = useState(
+    () => localStorage.getItem("dqa_operator") || "",
+  );
 
+  // fix #4: 用 ref 記住正在 fetch 的 device，避免競態
+  const historyFetchingRef = useRef(null);
   const lastHistoryMinuteRef = useRef(-1);
 
   const data = allDevices[selectedDevice] || {
@@ -528,23 +562,47 @@ const SOPPage = ({ active = true }) => {
       .catch(() => setTreeLoaded(true));
   }, []);
 
-  // fix: active 為 false 時不啟動 interval；切換回來時立刻打一次 API 不等 interval
+  // fix #4: 統一 history fetch 函式，切換設備時重置 lastHistoryMinuteRef
+  const fetchHistory = useCallback((deviceId, startedAt) => {
+    if (!startedAt) return;
+    historyFetchingRef.current = deviceId;
+    axios
+      .get(`${API}/api/devices/${deviceId}/history`)
+      .then((res) => {
+        // 只更新仍是目標設備的 state，避免過期回應覆蓋
+        if (historyFetchingRef.current === deviceId) {
+          setDeviceStates((prev) => ({
+            ...prev,
+            [deviceId]: {
+              ...prev[deviceId],
+              chartHistory: res.data,
+              chartStartedAt: startedAt,
+            },
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (!active) return;
 
-    // 立刻打一次，避免切換回來要等 3 秒
-    axios
-      .get(`${API}/api/devices`)
-      .then((r) => {
-        const map = {};
-        r.data.forEach((d) => {
-          map[d.device_id] = d;
-        });
-        setAllDevices(map);
-      })
-      .catch(() => {});
+    // 切換設備時重置分鐘 ref，確保新設備立刻可刷新
+    lastHistoryMinuteRef.current = -1;
 
-    const t = setInterval(() => {
+    const selDevice = allDevices[selectedDevice];
+    if (selDevice?.started_at) {
+      fetchHistory(selectedDevice, selDevice.started_at);
+    } else {
+      updateDS(selectedDevice, { chartHistory: [], chartStartedAt: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDevice]);
+
+  useEffect(() => {
+    if (!active) return;
+
+    const fetchDevices = () => {
       axios
         .get(`${API}/api/devices`)
         .then((r) => {
@@ -564,8 +622,7 @@ const SOPPage = ({ active = true }) => {
 
               if (!restoredSop && current.active_sop_json) {
                 try {
-                  const parsed = JSON.parse(current.active_sop_json);
-                  restoredSop = parsed;
+                  restoredSop = JSON.parse(current.active_sop_json);
                 } catch {
                   /* ignore */
                 }
@@ -577,11 +634,33 @@ const SOPPage = ({ active = true }) => {
               ) {
                 restoredSop = null;
               }
-              next[id] = { ...prevDS, activeSop: restoredSop };
+
+              // fix #1: 還原三步驟選擇（只在尚未選擇的情況下還原）
+              let selectionPatch = {};
+              if (
+                restoredSop &&
+                !prevDS.selectedStd &&
+                current.active_sop_json
+              ) {
+                const restored = restoreSelectionFromSopId(
+                  restoredSop.sop_id,
+                  prev[id].selectedStd ? null : /* trigger lookup */ null,
+                );
+                // 使用 standardTree 需在 closure 外，改用 functional update 時機
+                // 這裡先存 sopId，由下方 effect 處理
+                selectionPatch = { _pendingRestoreSopId: restoredSop.sop_id };
+              }
+
+              next[id] = {
+                ...prevDS,
+                activeSop: restoredSop,
+                ...selectionPatch,
+              };
             });
             return next;
           });
 
+          // fix #4: 分鐘級 history 刷新，使用統一 fetchHistory
           const now = new Date();
           const currentMinute = now.getHours() * 60 + now.getMinutes();
           if (
@@ -591,26 +670,42 @@ const SOPPage = ({ active = true }) => {
             lastHistoryMinuteRef.current = currentMinute;
             const selDevice = map[selectedDevice];
             if (selDevice?.started_at) {
-              axios
-                .get(`${API}/api/devices/${selectedDevice}/history`)
-                .then((res) => {
-                  setDeviceStates((prev) => ({
-                    ...prev,
-                    [selectedDevice]: {
-                      ...prev[selectedDevice],
-                      chartHistory: res.data,
-                      chartStartedAt: selDevice.started_at,
-                    },
-                  }));
-                })
-                .catch(() => {});
+              fetchHistory(selectedDevice, selDevice.started_at);
             }
           }
         })
         .catch(() => {});
-    }, 3000);
+    };
+
+    fetchDevices();
+    const t = setInterval(fetchDevices, 3000);
     return () => clearInterval(t);
-  }, [selectedDevice, active]);
+  }, [selectedDevice, active, fetchHistory]);
+
+  // fix #1: 當 standardTree 載入完成後，補全待還原的三步驟選擇
+  useEffect(() => {
+    if (!treeLoaded) return;
+    setDeviceStates((prev) => {
+      const next = { ...prev };
+      DEVICE_IDS.forEach((id) => {
+        const pendingSopId = prev[id]._pendingRestoreSopId;
+        if (pendingSopId && !prev[id].selectedStd) {
+          const restored = restoreSelectionFromSopId(
+            pendingSopId,
+            standardTree,
+          );
+          if (restored) {
+            next[id] = {
+              ...prev[id],
+              ...restored,
+              _pendingRestoreSopId: undefined,
+            };
+          }
+        }
+      });
+      return next;
+    });
+  }, [treeLoaded, standardTree]);
 
   const startedAt = allDevices[selectedDevice]?.started_at;
   useEffect(() => {
@@ -618,16 +713,9 @@ const SOPPage = ({ active = true }) => {
       updateDS(selectedDevice, { chartHistory: [], chartStartedAt: null });
       return;
     }
-    axios
-      .get(`${API}/api/devices/${selectedDevice}/history`)
-      .then((res) => {
-        updateDS(selectedDevice, {
-          chartHistory: res.data,
-          chartStartedAt: startedAt,
-        });
-      })
-      .catch(() => {});
-  }, [selectedDevice, startedAt]);
+    fetchHistory(selectedDevice, startedAt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startedAt]);
 
   const handleSelectStd = (key) =>
     updateDS(selectedDevice, {
@@ -642,12 +730,9 @@ const SOPPage = ({ active = true }) => {
 
   const steps = ds.activeSop?.steps || [];
 
-  // fix: isStepUnlocked 改為迭代，避免 O(n²) 遞迴
   const isStepUnlocked = (stepIndex) => {
     for (let i = stepIndex - 1; i >= 0; i--) {
-      if (!steps[i].optional) {
-        return !!ds.completedSteps[steps[i].step_id];
-      }
+      if (!steps[i].optional) return !!ds.completedSteps[steps[i].step_id];
     }
     return true;
   };
@@ -660,7 +745,6 @@ const SOPPage = ({ active = true }) => {
       newCompleted[stepId] = true;
     }
     updateDS(selectedDevice, { completedSteps: newCompleted });
-
     try {
       await axios.post(`${API}/api/devices/${selectedDevice}/progress`, {
         completed: Object.values(newCompleted).filter(Boolean).length,
@@ -670,7 +754,6 @@ const SOPPage = ({ active = true }) => {
     }
   };
 
-  // fix: 直接從 standardTree 取 steps，不再打第二次 /api/sop/
   const startSop = async () => {
     if (!testData) return;
     setStartError("");
@@ -679,13 +762,13 @@ const SOPPage = ({ active = true }) => {
         sop_id: testData.sop_id,
         device_id: selectedDevice,
       });
-      const steps = testData.steps || [];
-      if (steps.length === 0) {
+      const sopSteps = testData.steps || [];
+      if (sopSteps.length === 0) {
         setStartError("⚠️ SOP 步驟資料不完整，請確認後端 SOP 設定後重試。");
         return;
       }
       updateDS(selectedDevice, {
-        activeSop: { ...testData, steps },
+        activeSop: { ...testData, steps: sopSteps },
         completedSteps: {},
         savedExecutionId: null,
       });
@@ -712,7 +795,7 @@ const SOPPage = ({ active = true }) => {
     }
   };
 
-  // fix: 防重複提交
+  // fix #2: saveExecution 加入 operator
   const saveExecution = async () => {
     if (saving) return;
     setSaving(true);
@@ -725,10 +808,14 @@ const SOPPage = ({ active = true }) => {
       const res = await axios.post(`${API}/api/sop-executions/`, {
         sop_id: ds.activeSop.sop_id,
         device_id: selectedDevice,
+        operator: operator.trim() || null,
         test_started_at: data.started_at || null,
         steps: stepPayload,
       });
       updateDS(selectedDevice, { savedExecutionId: res.data.id });
+      // 記住 operator 到 localStorage
+      if (operator.trim())
+        localStorage.setItem("dqa_operator", operator.trim());
     } catch {
       setStartError("❌ 儲存失敗，請確認後端連線。");
     } finally {
@@ -788,7 +875,7 @@ const SOPPage = ({ active = true }) => {
             {DEVICE_IDS.map((id) => {
               const d = allDevices[id];
               const s = STATUS_CONFIG[d?.status] || STATUS_CONFIG.OFFLINE;
-              const active = id === selectedDevice;
+              const isSelected = id === selectedDevice;
               return (
                 <button
                   key={id}
@@ -799,10 +886,10 @@ const SOPPage = ({ active = true }) => {
                     fontSize: 11,
                     cursor: "pointer",
                     fontFamily: "monospace",
-                    fontWeight: active ? 700 : 400,
-                    border: `1px solid ${active ? s.color : "#30363d"}`,
-                    background: active ? s.bg : "#0d1117",
-                    color: active ? s.color : "#8b949e",
+                    fontWeight: isSelected ? 700 : 400,
+                    border: `1px solid ${isSelected ? s.color : "#30363d"}`,
+                    background: isSelected ? s.bg : "#0d1117",
+                    color: isSelected ? s.color : "#8b949e",
                     transition: "all .15s",
                   }}
                 >
@@ -831,13 +918,15 @@ const SOPPage = ({ active = true }) => {
           data.started_at &&
           (() => {
             const sop = ds.activeSop;
-            const startedAt = new Date(data.started_at);
+            const startedAtDate = new Date(data.started_at);
             const now = new Date();
-            const elapsedMin = Math.floor((now - startedAt) / 60000);
+            const elapsedMin = Math.floor((now - startedAtDate) / 60000);
             const spData = generateSP(sop);
             const totalMin =
               spData.length > 0 ? spData[spData.length - 1].min : 0;
-            const endTime = new Date(startedAt.getTime() + totalMin * 60000);
+            const endTime = new Date(
+              startedAtDate.getTime() + totalMin * 60000,
+            );
             const freeTimeMin = Math.max(0, totalMin - elapsedMin);
             const freeH = Math.floor(freeTimeMin / 60);
             const freeM = freeTimeMin % 60;
@@ -976,24 +1065,46 @@ const SOPPage = ({ active = true }) => {
               >
                 ⏸ 暫停切換
               </button>
-              <button
-                className="ctrl-btn grey"
-                onClick={() => handleAction("normal")}
-                disabled={!canStop}
+              <div
                 style={{
-                  opacity: canStop ? 1 : 0.35,
-                  cursor: canStop ? "pointer" : "not-allowed",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                  flex: 1,
                 }}
               >
-                ⏹ 正常停止
-              </button>
+                <button
+                  className="ctrl-btn grey"
+                  onClick={() => handleAction("normal")}
+                  disabled={!canStop}
+                  style={{
+                    opacity: canStop ? 1 : 0.35,
+                    cursor: canStop ? "pointer" : "not-allowed",
+                  }}
+                >
+                  ⏹ 正常停止
+                </button>
+                {/* fix #12: EMERGENCY 狀態下顯示引導說明 */}
+                {isEmergency && (
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "#58a6ff",
+                      textAlign: "center",
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    ↑ 點此觸發自動降溫，設備將緩慢回到 25°C
+                  </div>
+                )}
+              </div>
               <button
                 className="ctrl-btn red"
                 onClick={() => handleAction("emergency")}
-                disabled={isOffline}
+                disabled={isOffline || isEmergency}
                 style={{
-                  opacity: isOffline ? 0.35 : 1,
-                  cursor: isOffline ? "not-allowed" : "pointer",
+                  opacity: isOffline || isEmergency ? 0.35 : 1,
+                  cursor: isOffline || isEmergency ? "not-allowed" : "pointer",
                 }}
               >
                 🚨 緊急停止
@@ -1100,26 +1211,57 @@ const SOPPage = ({ active = true }) => {
                   {doneCnt} / {totalSteps} 步驟完成{allStepsDone && " ✅"}
                 </div>
               </div>
+
               {allStepsDone && !ds.savedExecutionId && (
-                <button
-                  onClick={saveExecution}
-                  disabled={saving}
-                  style={{
-                    marginTop: 12,
-                    width: "100%",
-                    padding: "10px",
-                    background: saving ? "#21262d" : "#238636",
-                    color: saving ? "#484f58" : "#fff",
-                    border: "none",
-                    borderRadius: 6,
-                    cursor: saving ? "not-allowed" : "pointer",
-                    fontWeight: 700,
-                    fontSize: 14,
-                    opacity: saving ? 0.6 : 1,
-                  }}
-                >
-                  {saving ? "⏳ 儲存中..." : "💾 儲存執行紀錄"}
-                </button>
+                <div style={{ marginTop: 12 }}>
+                  {/* fix #2: operator 輸入欄位 */}
+                  <div style={{ marginBottom: 8 }}>
+                    <label
+                      style={{
+                        fontSize: 11,
+                        color: "#8b949e",
+                        display: "block",
+                        marginBottom: 4,
+                      }}
+                    >
+                      操作人員姓名（選填，將寫入 ISO 17025 報告）
+                    </label>
+                    <input
+                      type="text"
+                      value={operator}
+                      onChange={(e) => setOperator(e.target.value)}
+                      placeholder="例：王小明"
+                      style={{
+                        width: "100%",
+                        padding: "8px 10px",
+                        background: "#0d1117",
+                        border: "1px solid #30363d",
+                        borderRadius: 6,
+                        color: "#cdd9e5",
+                        fontSize: 12,
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                  <button
+                    onClick={saveExecution}
+                    disabled={saving}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      background: saving ? "#21262d" : "#238636",
+                      color: saving ? "#484f58" : "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      cursor: saving ? "not-allowed" : "pointer",
+                      fontWeight: 700,
+                      fontSize: 14,
+                      opacity: saving ? 0.6 : 1,
+                    }}
+                  >
+                    {saving ? "⏳ 儲存中..." : "💾 儲存執行紀錄"}
+                  </button>
+                </div>
               )}
               {ds.savedExecutionId && (
                 <div
