@@ -19,10 +19,7 @@ make install
 # 2. 初始化資料庫（首次執行）
 python backend/init_db.py
 
-# 3. 拉取 embedding 模型（首次執行）
-ollama pull nomic-embed-text
-
-# 4. 啟動
+# 3. 啟動
 make dev
 ```
 
@@ -38,6 +35,8 @@ make dev
 > ⚠️ AI 諮詢功能需在 `backend/.env` 設定 `GEMINI_API_KEY`（[Google AI Studio](https://aistudio.google.com) 免費申請）
 
 > ⚠️ LINE Bot 功能需在 `backend/.env` 設定 `LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN`、`LINE_USER_ID`
+
+> ⚠️ Demo 存取密碼需在 `backend/.env` 設定 `DEMO_PASSWORD`，前端登入頁會要求輸入，Session 有效期限 8 小時
 
 > ⚠️ DB 結構有變更時，在 `backend/` 目錄下執行：`alembic revision --autogenerate -m "描述"` → `alembic upgrade head`
 
@@ -69,6 +68,11 @@ make dev
 **AI 法規諮詢**
 - 自然語言描述需求，RAG 從 78 個測試條件精準檢索
 - 串流逐字輸出、多對話管理、專案分組、對話持久化
+
+**存取控制**
+- 前端登入頁密碼保護，Session 8 小時自動過期
+- 後端 IP Rate Limiting，錯誤 5 次封鎖 10 分鐘
+- CORS preflight 與 LINE Webhook 路徑自動豁免
 
 ---
 
@@ -104,6 +108,8 @@ make dev
 | POST | `/api/stop/{device_id}/normal` | 正常停止（自動降溫） |
 | POST | `/api/ai/standards-query-stream` | AI 法規諮詢（串流） |
 
+> 所有 API 需在 Header 帶 `X-Demo-Password`，否則回傳 401。
+
 ---
 
 ## 技術堆棧
@@ -112,7 +118,7 @@ make dev
 |----|------|
 | 後端 | FastAPI、SQLAlchemy 2.0、SQLite、Alembic、asyncio、numpy |
 | 前端 | React 18、Vite、Recharts、Axios |
-| AI | nomic-embed-text（Ollama）、Gemini 2.5 Flash-Lite、RAG in-memory |
+| AI | Gemini Embedding API、Gemini 2.5 Flash-Lite、RAG in-memory |
 | 通知 | LINE Messaging API、ngrok |
 | 環境 | Python 3.9+、Node.js 18+、macOS/Linux |
 
