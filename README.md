@@ -18,7 +18,7 @@
 
 ## AI 輔助模組
 
-**法規諮詢助手**（✅ 已完成）— 使用者以自然語言描述產品與目標，LLM 對應建議法規版本與測試條件，適用於開案前初步評估。串接本機 Ollama `llama3.1:8b`，不依賴雲端，資料不出內網。支援多對話管理、專案分組、拖曳移動對話、串流逐字輸出含計時、多輪對話、對話記錄持久化。僅推薦溫箱可執行的測試，只限五大法規範圍內。每則回覆附上免責聲明。
+**法規諮詢助手**（✅ 已完成）— 使用者以自然語言描述產品與目標，RAG 架構從 78 個測試條件中精準檢索，LLM 僅負責整理語言回覆，不憑訓練知識捏造參數。串接本機 Ollama `qwen2.5:7b`（推理）+ `nomic-embed-text`（向量化），不依賴雲端，資料不出內網。支援多對話管理、專案分組、拖曳移動對話、串流逐字輸出含計時、多輪對話、對話記錄持久化。僅推薦溫箱可執行的測試，只限五大法規範圍內。每則回覆附上免責聲明。
 
 **LINE Bot 整合**（✅ 已完成）— 異常警報主動推播、測試完成通知、設備狀態查詢。**優化互動體驗**：導入 Flex Message 卡片視覺化（依狀態變換紅/綠色調）與 Quick Replies 快速回覆按鈕，讓操作人員在實驗室中無需打字，點擊即可掌握進度。串接 LINE Messaging API，使用 ngrok 建立公開 Webhook；簽名驗證與 User ID 白名單確保安全。
 
@@ -37,7 +37,7 @@
 - **完整波型曲線** — SP 目標曲線（虛線）與 PV 實際曲線（實線）疊加顯示，X 軸為完整測試時長；低溫段（< 0°C）濕度線自動斷開
 - **執行資訊面板** — Pgm / Step / Free Time / Cycle / Now Time / End Time，對應 KSON 溫箱面板格式
 - **LINE 互動儀表板** — 透過 Flex Message 提供結構化設備資訊，支持 Quick Replies 一鍵切換監看設備，減少輸入摩擦
-- **AI 法規諮詢** — 多對話管理、專案分組、自然語言描述需求、串流逐字回覆，支援中途停止、複製（含 HTTP fallback）、計時、對話持久化、智慧捲動、動態追問建議；雙層免責聲明（前端固定標籤 + AI 回覆內標注版本號）
+- **AI 法規諮詢（RAG）** — 多對話管理、專案分組、自然語言描述需求、串流逐字回覆，支援中途停止、複製（含 HTTP fallback）、計時、對話持久化、智慧捲動；RAG 確保回覆內容僅來自內建法規資料；前端固定免責聲明
 - **物理模擬引擎** — 即時升降溫斜率模擬，遵守各標準速率限制，每 10 秒寫 DB，依 ISO/IEC 17025:2017 §7.5 & §8.4 永久保存
 - **異常看板** — 緊急停止自動寫入事件紀錄，記錄當下溫濕度與執行中 SOP，每 60 秒自動刷新
 - **ISO 17025 測試報告** — 7 節格式，big5 編碼，PASS/FAIL 由授權工程師人工判定
@@ -74,6 +74,8 @@ make dev
 
 > ⚠️ 使用 LINE Bot 功能時，需另開 terminal 執行 `make ngrok`，並將產生的 HTTPS URL 設定至 LINE Developers Console 的 Webhook URL。
 
+> ⚠️ 首次啟動前需拉取 embedding 模型：`ollama pull nomic-embed-text`
+
 啟動後開啟 `http://localhost:5173`，或前往 `http://localhost:5173/sop` 執行測試，`http://localhost:5173/ai` 使用 AI 法規諮詢。
 
 互動式 API 文件：`http://localhost:8000/docs`
@@ -102,9 +104,9 @@ make dev
 
 ## 技術堆棧
 
-後端：FastAPI、Pydantic v2、SQLAlchemy 2.0、asyncio、SQLite、httpx、Alembic
+後端：FastAPI、Pydantic v2、SQLAlchemy 2.0、asyncio、SQLite、httpx、Alembic、numpy
 前端：React 18、Vite、Recharts、Axios
-AI：Ollama（本機）、llama3.1:8b
+AI：Ollama（本機）、qwen2.5:7b（推理）、nomic-embed-text（向量化）、RAG in-memory
 環境：Python 3.9+、Node.js 18+、macOS/Linux（需要 socat）
 
 ## 延伸文件

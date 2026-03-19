@@ -4,7 +4,7 @@
 
 ---
 
-## 當前狀態快照（2026-03-16）
+## 當前狀態快照（2026-03-19）
 
 ### 專案目錄結構
 
@@ -22,6 +22,7 @@
 │   ├── requirements.txt
 │   └── app/
 │       ├── ai.py
+│       ├── rag.py
 │       ├── errors.py
 │       ├── line.py
 │       ├── main.py
@@ -70,10 +71,11 @@
 | 環境測試標準 | `backend/app/standards/` | 三層 STANDARD_TREE，5 法規 78 條件 |
 | SOP 路由 + 執行紀錄 | `backend/app/sop.py` | 標準樹展開、三步驟選擇、執行紀錄；`standards/tree` 含 steps 欄位 |
 | CSV 報告 | `backend/app/reports.py` | ISO 17025 格式，big5，查詢上限 10000 筆 |
-| LINE Bot | backend/app/line.py | 狀態查詢、推播、簽名驗證、白名單、Flex Message 視覺化、Quick Replies 免打字互動 |
+| LINE Bot | `backend/app/line.py` | 狀態查詢、推播、簽名驗證、白名單、Flex Message 視覺化、Quick Replies 免打字互動 |
 | 異常紀錄 | `backend/app/errors.py` | EMERGENCY 自動寫入 error_logs |
-| AI 法規諮詢後端 | `backend/app/ai.py` | 串流 + 非串流，llama3.1:8b，system prompt 快取，warm-up 預載 |
-| AI 法規諮詢前端 | `client/src/ai/` | 多對話管理、專案分組、拖曳移動分組、串流計時器、免責聲明精簡、localStorage 持久化 |
+| RAG 知識庫 | `backend/app/rag.py` | nomic-embed-text 向量化 78 條件、in-memory 搜尋、簡寫比對、溫度過濾 |
+| AI 法規諮詢後端 | `backend/app/ai.py` | 串流 + 非串流，qwen2.5:7b，四種查詢路由，RAG 動態注入 context |
+| AI 法規諮詢前端 | `client/src/ai/` | 多對話管理、專案分組、拖曳移動分組、串流計時器、前端固定免責聲明、localStorage 持久化 |
 | 儀表板 | `client/src/Dashboard.jsx` | 六狀態、趨勢圖、步驟進度條、倒數計時器、active prop 控制輪詢 |
 | SOP 執行頁 | `client/src/SOPPage.jsx` | 三步驟法規選擇、SP+PV 波型曲線、執行資訊面板、防重複提交、切換回來立刻打 API |
 | 異常看板 | `client/src/Errorlog.jsx` | 統計卡片 + 完整紀錄列表，60s 自動刷新 |
@@ -86,7 +88,6 @@
 3. **Phase 3**：多台設備架構、治具資料庫、認證系統、RS-485 真實通訊
 
 ---
-
 
 ## 技術規格
 
@@ -103,12 +104,15 @@
 
 ### AI 模組
 
-- 模型：`llama3.1:8b`（本機 Ollama）
+- 推理模型：`qwen2.5:7b`（本機 Ollama）
+- 向量模型：`nomic-embed-text`（本機 Ollama，啟動時向量化 78 條件，約 3~5 秒）
+- 架構：RAG（Retrieval-Augmented Generation）— in-memory 向量庫，numpy 餘弦相似度搜尋，零額外套件
 - 端點：`/api/ai/standards-query`（非串流）、`/api/ai/standards-query-stream`（串流）
-- system prompt：英文指令，約 150 tokens；不含條目清單，靠模型訓練知識回答；限制五大法規與溫箱設備
-- 繁體中文強制：由 system prompt 統一管理，前端不再附加 TC_PREFIX
+- 查詢路由：點名單一標準 → `retrieve_by_std` 全撈；跨標準比較 → `retrieve_multi`；含溫度數字 → 向量 + 溫度過濾；其他 → top_k=5 向量搜尋
+- 簡寫比對：`match_std_keys` 支援 `"50155"`、`"60068"`、`"IEC 61850"` 等口語化輸入
+- 繁體中文強制：由 system prompt 統一管理
 - 多輪對話：MAX_HISTORY = 4
-- 追問建議功能：已移除（Ollama 單佇列限制，無法同步產生）
+- 免責聲明：由前端 `MessageBubble.jsx` 固定顯示，system prompt 不重複
 - localStorage key：`dqa_ai_chats_v2`
 
 ### LINE Bot
@@ -158,6 +162,7 @@ RUNNING → EMERGENCY（任意時刻）
 ```bash
 make install               # 安裝所有依賴
 python backend/init_db.py  # 首次初始化資料庫
+ollama pull nomic-embed-text  # 首次需拉取 embedding 模型
 make dev                   # 啟動全部服務
 make clean                 # 清理殘留程序
 make ngrok                 # 啟動 ngrok（LINE Bot Webhook 用）
@@ -175,6 +180,13 @@ alembic upgrade head
 - 斜率控制：`get_ramp_rate()` 動態讀取各標準速率限制
 - 低溫測試：先降至 `low_temperature`，再升至 `high_temperature`
 - 狀態機：`EMERGENCY` 微幅抖動；`PAUSED` 鎖定數值不寫 DB；`FINISHING` 降溫至 25°C 後回 `IDLE`
+
+### RAG 架構
+
+- 知識庫建立：啟動時從 `STANDARD_TREE` 自動展開 78 個 chunk，每個包含標準名、版本、測試條件、溫度、時間、速率、濕度、通電狀態、說明
+- 向量化：`nomic-embed-text` 逐筆 embed，L2 正規化後存入 numpy array
+- 搜尋：點積 = 餘弦相似度（已正規化），直接矩陣運算，無需 ChromaDB
+- 簡寫比對：`_STD_ALIAS_MAP` 涵蓋口語化輸入，normalize 後比對（小寫、去空格與連字號）
 
 ### 硬體通訊（Phase 3）
 
