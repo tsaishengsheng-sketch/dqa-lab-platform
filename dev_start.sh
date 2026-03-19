@@ -80,7 +80,10 @@ else
     # 讀取 LINE Token
     ENV_FILE="backend/.env"
     if [ -f "$ENV_FILE" ]; then
-        export $(grep -v '^#' "$ENV_FILE" | xargs 2>/dev/null)
+        while IFS='=' read -r key value; do
+            [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
+            export "$key=$value"
+        done < "$ENV_FILE"
     fi
 
     WEBHOOK_URL="${NGROK_URL}/api/line/webhook"
@@ -89,16 +92,21 @@ else
         echo "⚠️  未設定 LINE_CHANNEL_ACCESS_TOKEN，跳過 Webhook 自動更新"
         echo "   ngrok URL：$NGROK_URL"
     else
-        RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X PUT https://api.line.me/v2/bot/channel/webhook/endpoint \
+        curl -s -o /dev/null -X PUT https://api.line.me/v2/bot/channel/webhook/endpoint \
             -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"webhookEndpointUrl\": \"$WEBHOOK_URL\"}")
+            -d "{\"webhookEndpointUrl\": \"$WEBHOOK_URL\"}"
 
-        if [ "$RESPONSE" = "200" ]; then
-            echo "✅ LINE Webhook 已自動更新：$WEBHOOK_URL"
+        # 驗證：直接 GET 確認現在的 Webhook URL 是否正確
+        CURRENT=$(curl -s \
+            -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
+            https://api.line.me/v2/bot/channel/webhook/endpoint \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('endpoint',''))" 2>/dev/null)
+
+        if [ "$CURRENT" = "$WEBHOOK_URL" ]; then
+            echo "✅ LINE Webhook 已確認設定：$WEBHOOK_URL"
         else
-            echo "⚠️  LINE Webhook 自動更新失敗（HTTP $RESPONSE）"
+            echo "⚠️  LINE Webhook 設定失敗，目前為：$CURRENT"
             echo "   請手動填入：$WEBHOOK_URL"
         fi
     fi
