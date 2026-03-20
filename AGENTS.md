@@ -113,6 +113,61 @@
 
 ---
 
+## 已知問題與修復進度（2026-03-20 全面健診）
+
+> 本節紀錄健診發現的所有 bug 與 UX 問題，並追蹤修復狀態。
+> 狀態：🔴 未修 ｜ 🟡 進行中 ｜ ✅ 已修
+
+### 後端 Bug
+
+| # | 嚴重度 | 位置 | 問題描述 | 狀態 |
+|---|--------|------|----------|------|
+| B1 | 🔴 致命 | `main.py` lifespan | 重啟恢復時 `sim_phase` 寫死為 `"running"`，該值不在狀態機內，導致所有恢復中的設備溫度永遠不動 | 🔴 未修 |
+| B2 | 🔴 致命 | `utils.py` | `_save_device_state` 沒有存 `started_at`，重啟後圖表與倒數計時全部失效 | 🟡 進行中（Session 1 已給修復版） |
+| B3 | 🟠 嚴重 | `main.py` data_simulator | `cycles=1` 且有 `low_temp` 時，`dwell_high` 結束直接跳 `ramp_to_ambient`，完全跳過低溫段 | 🔴 未修 |
+| B4 | 🟠 嚴重 | `main.py` / `SOPPage.jsx` | `dwell_counters` 以秒為單位累計，但前端 `generateSP` 以分鐘為單位，兩者時間尺度不同，SP/PV 波形對不上 | 🔴 未修 |
+| B5 | 🟡 中等 | `main.py` `_calc_estimated_end_at` | 雙溫循環（`low >= ambient`）的結尾位置計算有誤，倒數時間不準 | 🔴 未修 |
+| B6 | 🟡 中等 | `main.py` FINISHING | 降溫速率寫死 `0.4°C/s`（每分鐘 24°C），從 -40°C 回到 25°C 只需約 2.7 分鐘，不合理，應參考 `ramp_rate` | 🔴 未修 |
+| B7 | 🟡 中等 | `sop.py` `start_sop` | 啟動新 SOP 時沒有重置 `sim_phase` 與 `sim_cycle`，可能殘留上次狀態 | 🔴 未修 |
+
+### 前端 Bug
+
+| # | 嚴重度 | 位置 | 問題描述 | 狀態 |
+|---|--------|------|----------|------|
+| F1 | 🟡 中等 | `SOPPage.jsx` 執行資訊面板 | Cycle 欄位分子永遠顯示 `0001`，因為 `/api/devices` 沒有回傳 `sim_cycle` | 🔴 未修 |
+| F2 | 🟡 中等 | `Dashboard.jsx` | 趨勢圖切換設備時有延遲，因為 `historyRef` 是 ref 非 state，不會自動觸發 re-render | 🔴 未修 |
+| F3 | 🟢 輕微 | `Dashboard.jsx` | 趨勢圖資料點只在「每分鐘前 10 秒」更新，窗口機制脆弱，tab 失焦時會漏掉 | 🔴 未修 |
+| F4 | 🟢 輕微 | `SOPPage.jsx` `isStepUnlocked` | 步驟鎖定邏輯只檢查最近一個非 optional 前步驟，連續 optional 夾必填的邊界案例有誤 | 🔴 未修 |
+
+### UX 問題
+
+| # | 影響 | 位置 | 問題描述 | 狀態 |
+|---|------|------|----------|------|
+| U1 | 高 | `SOPPage.jsx` `startSop()` | 啟動按鈕按下後無 loading 狀態，要等 3 秒輪詢才看到 RUNNING，使用者不確定有沒有成功 | 🔴 未修 |
+| U2 | 高 | `SOPPage.jsx` | 安全檢查 checklist 與啟動按鈕視覺上沒有連動，使用者選完條件才發現下面還有關卡 | 🔴 未修 |
+| U3 | 高 | `SOPPage.jsx` 緊急停止 | EMERGENCY 後引導文字太小，「點此觸發降溫」是小字說明而非明顯按鈕 | 🔴 未修 |
+| U4 | 高 | `SOPPage.jsx` `toggleStep` | 取消步驟時後面步驟連鎖清除，無任何確認提示，使用者不知道為什麼進度消失 | 🔴 未修 |
+| U5 | 中 | `SOPPage.jsx` `handleAction("pause")` | 暫停切換無即時回饋，要等輪詢才知道結果，按鈕文字不立即變化 | 🔴 未修 |
+| U6 | 中 | `SOPPage.jsx` `saveExecution` | 儲存成功後只有綠色 banner，無下一步引導（該停機？繼續等？） | 🔴 未修 |
+| U7 | 中 | 全站 | Dashboard 點卡片切換設備，SOPPage 點按鈕組切換設備，同功能兩種互動模式 | 🔴 未修 |
+| U8 | 中 | `App.jsx` / `LoginPage` | Railway 後端 offline 時前端顯示空白，無 fallback 畫面；登入頁無 Demo 密碼提示，招募者無法自行進入 | 🔴 未修 |
+
+### 修復路線圖（Session 順序）
+
+```
+Session 1 — utils.py          ✅ 已給修復版（補上 started_at 儲存）
+Session 2 — main.py           🔴 修 B1（sim_phase 恢復）、B3（低溫 cycle）、B6（FINISHING 降溫）
+Session 3 — sop.py            🔴 修 B7（start_sop 重置 sim_phase）
+Session 4 — SOPPage.jsx       🔴 修 U1 U2 U3 U4 U5 U6（回饋與引導）、F4（步驟鎖定）
+Session 5 — Dashboard.jsx     🔴 修 F2 F3（趨勢圖更新機制）
+Session 6 — main.py（補）     🔴 修 F1（加 sim_cycle 到 /api/devices 回傳）、B5（estimated_end_at）
+Session 7 — App.jsx           🔴 修 U8（offline fallback、Demo 密碼顯示）
+```
+
+**注意：Session 1 的 `utils.py` 修復版已由 Claude 提供，尚未套用確認，確認後更新此欄狀態。**
+
+---
+
 ## 技術規格
 
 ### 存取控制
