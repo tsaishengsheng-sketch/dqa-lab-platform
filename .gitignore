@@ -58,3 +58,4 @@ test_*.py
 *.log
 *.info
 
+backend/rag_cache.pkl
