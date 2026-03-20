@@ -34,12 +34,13 @@
 | 存取控制 | ✅ | X-Demo-Password、IP Rate Limiting、8h session |
 | 儀表板 | ✅ | 六狀態、趨勢圖、倒數計時、設備切換即時更新 |
 | 登入頁 | ✅ | offline fallback、Demo 密碼提示 |
+| SOPPage 重構 | ✅ | 拆分為 7 個子元件，主頁面壓到 ~200 行（2026-03-20） |
 
 ### 待開發（依優先度）
 
 1. **AI 治具管理助手**（`/api/ai/fixture-recommend`）
 2. **AI 設備排程預估**（`/api/ai/schedule-estimate`）
-3. **SOPPage 模組化重構**：目前約 1500 行，拆分為 `TempChart`、`ConditionCard`、`SelectGroup`、`StepList`、`ExecutionInfoPanel`、`SafetyChecklist`、`generateSP.js`，主頁面目標壓到 200 行
+3. **報告下載優化**：`saveExecution()` 成功後自動觸發下載（目前為 `window.open`，瀏覽器可能攔截彈出視窗，待改為 `<a download>` blob 方式）
 4. **Phase 3**：RS-485 真實通訊、治具資料庫、JWT 認證
 
 ### 已知未修問題
@@ -48,6 +49,30 @@
 |---|------|------|
 | B4 | `dwell_counters` 秒單位 vs `generateSP` 分鐘單位，SP/PV 波形對不上 | 架構層問題，留待 Phase 3 |
 | U7 | Dashboard 點卡片 vs SOPPage 點按鈕組切換設備，互動不一致 | 可接受差異，留待未來統一 |
+| U8 | 報告下載用 `window.open`，瀏覽器可能攔截彈出視窗 | 留待後續改為 blob `<a download>` |
+
+### SOPPage 重構說明（2026-03-20）
+
+**拆分結構**：
+```
+src/
+  components/sop/
+    generateSP.js          # SP 波形計算（純函式，無 React）
+    TempChart.jsx          # SP+PV 趨勢圖
+    ConditionCard.jsx      # 測試條件摘要卡片
+    SelectGroup.jsx        # 單一步驟選擇器（法規/版本/條件 共用）
+    StepList.jsx           # SOP 步驟勾選清單 + 進度條
+    ExecutionPanel.jsx     # 儲存執行紀錄 + 報告下載
+    SafetyChecklist.jsx    # 上架驗證注意事項 + 啟動按鈕
+  SOPPage.jsx              # 主頁面 ~200 行，只負責狀態與資料協調
+  SOPPage.css              # 樣式不動
+```
+
+**UX 變更**：
+- 操作人員姓名移至「上架驗證注意事項」區塊頂部，啟動前必填（非必填但建議填）
+- 啟動按鈕在 operator 欄位為空時顯示提示但不強制擋住（仍可啟動）
+- `saveExecution()` 成功後自動呼叫 `window.open` 下載報告，同時顯示下載連結供備用
+- 步驟改為**系統自動確認**設計備註：目前仍為手動勾選；自動確認（PV 到達 SP 觸發）為 Phase 3 後端 event 架構，前端 checkbox UI 保留但標注為暫時方案
 
 ---
 
