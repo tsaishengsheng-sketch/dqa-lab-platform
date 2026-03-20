@@ -17,9 +17,11 @@
 - Vercel：24 小時常駐，`VITE_API_URL` 已設定於 Vercel Dashboard
 - Railway：Trial 方案，GitHub Auto Deploy 已斷開。平常 offline，展示前至 Dashboard → `⋮` → **Redeploy**，用完後 → `⋮` → **Remove**
 - 後端環境變數：`GEMINI_API_KEY`、`DEMO_PASSWORD` 等已設定於 Railway Dashboard → Variables
+- 本地與雲端可同時運行，但 LINE Webhook URL 同時只能指向一個端點
 
 **已知注意事項：**
-- Gemini Embedding API 免費方案上限 1000 次/天，每次 Railway Redeploy 會消耗約 78 次（78 個條件向量化）。`rag.py` 已加入本地快取（`rag_cache.pkl`），第一次向量化後重啟直接讀快取，不再消耗配額
+- Gemini Embedding API 免費方案上限 1000 次/天，每次 Railway Redeploy 都是全新 container，快取不保留，會消耗約 78 次配額。本地開發的 `rag_cache.pkl` 會保留，重啟直接讀取不消耗配額
+- `rag_cache.pkl` 已加入 `.gitignore`，不會上傳 GitHub
 - `dev_start.sh` 讀取 `.env` 時使用 `cut -d'=' -f2-`，正確處理含 `=` 號的 base64 token，且不污染 shell 環境變數。若推播出現 401，請重開終端機再執行 `make dev`，避免舊 session 殘留的環境變數干擾
 
 ### 專案目錄結構
@@ -91,7 +93,7 @@
 | CSV 報告 | `backend/app/reports.py` | ISO 17025 格式，big5，含操作人員，查詢上限 10000 筆 |
 | LINE Bot | `backend/app/line.py` | 狀態查詢、推播、簽名驗證、白名單、Flex Message、Quick Replies；環境變數動態讀取（`os.getenv`）避免 import 順序問題 |
 | 異常紀錄 | `backend/app/errors.py` | EMERGENCY 自動寫入；防重複觸發；記錄已完成步驟數；查詢上限 500 筆 |
-| RAG 知識庫 | `backend/app/rag.py` | Gemini Embedding API 向量化 78 條件、分批處理（20 條/批）、in-memory 搜尋、簡寫比對、top_k=20；本地快取（`rag_cache.pkl`）避免重複消耗配額 |
+| RAG 知識庫 | `backend/app/rag.py` | Gemini Embedding API 向量化 78 條件、分批處理（20 條/批）、in-memory 搜尋、簡寫比對、top_k=20；本地快取（`rag_cache.pkl`，已加入 `.gitignore`）避免重複消耗配額 |
 | AI 諮詢後端 | `backend/app/ai.py` | 串流 + 非串流，Gemini 2.5 Flash-Lite，RAG 動態注入 |
 | 存取控制 | `backend/app/auth.py` | `X-Demo-Password` header 驗證、IP rate limiting（5次錯誤封鎖10分鐘）、OPTIONS/webhook 豁免；SKIP_PATHS 使用 `startswith` 比對 |
 | AI 諮詢前端 | `client/src/ai/` | 多對話管理、專案分組、串流計時器、localStorage 持久化 |
@@ -157,7 +159,7 @@ idle → ramp_to_low（低溫）或 ramp_to_high（其他）
 ### AI 模組
 
 - 推理：`gemini-2.5-flash-lite`（免費方案 1000 次/天），API Key 存於 `backend/.env` 的 `GEMINI_API_KEY`
-- 向量：`gemini-embedding-001`（Gemini Embedding API），啟動時分批向量化 78 條件（20 條/批，批次間等 5 秒），約 20 秒；結果快取至 `backend/rag_cache.pkl`，重啟時直接讀取
+- 向量：`gemini-embedding-001`（Gemini Embedding API），啟動時分批向量化 78 條件（20 條/批，批次間等 5 秒），約 20 秒；結果快取至 `backend/rag_cache.pkl`（已加入 `.gitignore`），重啟時直接讀取
 - 架構：RAG in-memory，numpy 餘弦相似度，無需 ChromaDB、無需 Ollama
 - 查詢路由：點名單一標準 → 全撈；跨標準比較 → `retrieve_multi`；含溫度數字 → 向量 + 溫度過濾；其他 → top_k=20
 - 多輪對話：MAX_HISTORY = 4，history 由前端傳入
