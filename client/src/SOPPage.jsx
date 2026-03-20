@@ -226,15 +226,16 @@ const SOPPage = ({ active = true }) => {
     fetchHistory(selectedDevice, startedAt);
   }, [allDevices[selectedDevice]?.started_at]); // eslint-disable-line
 
-  const startSop = async () => {
+  // operator 由 modal 確認後傳入，直接帶進 POST body
+  const startSop = async (confirmedOperator) => {
     if (!testData || starting) return;
     setStartError("");
     setStarting(true);
-    if (operator.trim()) localStorage.setItem("dqa_operator", operator.trim());
     try {
       await api.post("/api/sop/start", {
         sop_id: testData.sop_id,
         device_id: selectedDevice,
+        operator: confirmedOperator || "",
       });
       const sopSteps = testData.steps || [];
       if (!sopSteps.length) {

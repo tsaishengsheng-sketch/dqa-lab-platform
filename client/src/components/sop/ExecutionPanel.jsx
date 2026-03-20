@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import api, { API_BASE } from "../../api";
 
 // 儲存執行紀錄 + 自動下載報告
-// operator 由父元件傳入（啟動前已填寫）
+// operator 由父元件傳入（啟動前 modal 已確認）
 const ExecutionPanel = ({
   activeSop,
   selectedDevice,
@@ -14,7 +14,6 @@ const ExecutionPanel = ({
   onError,
 }) => {
   const [saving, setSaving] = useState(false);
-  const [reportUrl, setReportUrl] = useState(null);
 
   const saveExecution = async () => {
     if (saving) return;
@@ -34,12 +33,10 @@ const ExecutionPanel = ({
       });
 
       const execId = res.data.id;
-      const url = `${API_BASE}/api/reports/csv/${execId}`;
-      setReportUrl(url);
       onSaved(execId);
 
-      // 自動觸發下載（瀏覽器可能攔截，備用連結同步顯示）
-      window.open(url, "_blank");
+      // 自動觸發下載（備用 <a> 連結同步顯示）
+      window.open(`${API_BASE}/api/reports/csv/${execId}`, "_blank");
     } catch {
       onError("❌ 儲存失敗，請確認後端連線。");
     } finally {
@@ -47,9 +44,9 @@ const ExecutionPanel = ({
     }
   };
 
-  // 已儲存狀態
+  // 已儲存狀態：reportUrl 直接從 savedExecutionId 計算，不另存 state
   if (savedExecutionId) {
-    const url = reportUrl || `${API_BASE}/api/reports/csv/${savedExecutionId}`;
+    const url = `${API_BASE}/api/reports/csv/${savedExecutionId}`;
     return (
       <div
         style={{
@@ -85,7 +82,6 @@ const ExecutionPanel = ({
         >
           下一步：確認報告已下載後，點「正常停止」讓設備自動降溫回待機。
         </div>
-        {/* 備用下載連結（防瀏覽器攔截 window.open） */}
         <a
           href={url}
           target="_blank"

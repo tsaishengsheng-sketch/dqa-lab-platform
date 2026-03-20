@@ -19,12 +19,12 @@ DEVICE_IDS = ["KSON_CH01", "KSON_CH02", "KSON_CH03", "KSON_CH04", "KSON_CH05"]
 
 # 呈現 SOP 列表用的資料類型
 class SopResponse(BaseModel):
-    sop_id: str  # SOP ID
-    name: str  # SOP 名稱
-    test_type: str  # 測試類型（ chamber）
-    version: str  # SOP 版本
-    steps: List[dict]  # SOP 步驟清單
-    description: Optional[str] = ""  # SOP 說明
+    sop_id: str
+    name: str
+    test_type: str
+    version: str
+    steps: List[dict]
+    description: Optional[str] = ""
 
 
 # 標準樹與 SOP 列表路由
@@ -62,7 +62,6 @@ def get_standards_tree():
                     "reference": test_data.get("reference", ""),
                     "temp_tolerance": test_data.get("temp_tolerance", 2.0),
                     "humi_tolerance": test_data.get("humi_tolerance", 5.0),
-                    # fix: 一併回傳 steps，前端啟動時不需再打 /api/sop/ 取得步驟
                     "steps": test_data.get("steps", []),
                 }
     return result
@@ -108,6 +107,7 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
     """啟動指定設備的 SOP 測試"""
     sop_id: str = payload.get("sop_id", "")
     device_id: str = payload.get("device_id", "KSON_CH01")
+    operator: str = payload.get("operator", "")  # 操作人員姓名
 
     if not sop_id:
         raise HTTPException(status_code=400, detail="sop_id 不能為空")
@@ -147,42 +147,43 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
             "completed_steps": 0,
             "started_at": now,
             "total_steps": len(std_data.get("steps", [])),
-            # fix B7: 明確重置模擬狀態，避免殘留上次 sim_phase
+            "operator": operator.strip() if operator else "",  # 存入 cache
             "sim_phase": "idle",
             "sim_cycle": 0,
         }
     )
 
-    # fix: 統一使用 _save_device_state（來自 utils.py，避免 circular import）
     _save_device_state(device_id, device)
 
-    print(f"🔥 [{device_id}] Started SOP: {sop_id} ({sop_name})")
+    print(
+        f"🔥 [{device_id}] Started SOP: {sop_id} ({sop_name}) by {operator or '未填寫'}"
+    )
     return {"status": "success", "message": f"{device_id} 已啟動 {sop_name}"}
 
 
 # SOP 執行紀錄路由
 class StepRecordSchema(BaseModel):
-    step_id: int  # 步驟 ID
-    completed: bool  # 是否完成
-    parameters: Optional[Dict[str, Any]] = None  # 參數設定
-    photos: Optional[List[str]] = None  # 照片列表
+    step_id: int
+    completed: bool
+    parameters: Optional[Dict[str, Any]] = None
+    photos: Optional[List[str]] = None
 
 
 class ExecutionCreate(BaseModel):
-    sop_id: str  # SOP ID
-    device_id: Optional[str] = None  # 設備 ID（選填）
-    operator: Optional[str] = None  # 操作者名稱（選填）
-    test_started_at: Optional[datetime.datetime] = None  # 測試開始時間（選填）
-    test_ended_at: Optional[datetime.datetime] = None  # 測試結束時間（選填）
+    sop_id: str
+    device_id: Optional[str] = None
+    operator: Optional[str] = None
+    test_started_at: Optional[datetime.datetime] = None
+    test_ended_at: Optional[datetime.datetime] = None
     steps: List[StepRecordSchema]
 
 
 class ExecutionResponse(BaseModel):
-    id: int  # 執行 ID
-    sop_id: str  # SOP ID
-    device_id: Optional[str] = None  # 設備 ID（選填）
-    operator: Optional[str] = None  # 操作者名稱（選填）
-    created_at: datetime.datetime  # 創建時間
+    id: int
+    sop_id: str
+    device_id: Optional[str] = None
+    operator: Optional[str] = None
+    created_at: datetime.datetime
     steps: List[StepRecordSchema]
 
 

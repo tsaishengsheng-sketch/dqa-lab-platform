@@ -51,6 +51,7 @@ async def lifespan(app: FastAPI):
                 "active_sop_json": s.active_sop_json,
                 "completed_steps": s.completed_steps or 0,
                 "started_at": started_at,
+                "operator": "",
                 "sim_phase": "idle",
                 "sim_cycle": 0,
             }
@@ -66,6 +67,7 @@ async def lifespan(app: FastAPI):
                 "active_sop_json": None,
                 "completed_steps": 0,
                 "started_at": None,
+                "operator": "",
                 "sim_phase": "idle",
                 "sim_cycle": 0,
             }
@@ -146,14 +148,11 @@ def _calc_estimated_end_at(item: dict) -> Optional[str]:
     ambient = 25.0
 
     if low_temp is not None and low_temp < ambient:
-        # 低溫測試：ambient→low, (low→high→dwell→low→dwell)×cycles, low→ambient
         ramp_ambient_to_low = abs(ambient - low_temp) / ramp_rate
         ramp_low_to_high = abs(high_temp - low_temp) / ramp_rate
         one_cycle_min = ramp_low_to_high + dwell_min + ramp_low_to_high + dwell_min
         total_min = ramp_ambient_to_low + one_cycle_min * cycles + ramp_ambient_to_low
     elif low_temp is not None:
-        # fix B5: 雙溫循環對齊前端 generateSP
-        # 最後一個 cycle 不含 ramp(low→high)
         ramp_up = abs(high_temp - ambient) / ramp_rate
         ramp_hl = abs(high_temp - low_temp) / ramp_rate
         ramp_down = abs(low_temp - ambient) / ramp_rate
@@ -161,7 +160,6 @@ def _calc_estimated_end_at(item: dict) -> Optional[str]:
         last_cycle = dwell_min * 2 + ramp_hl
         total_min = ramp_up + full_cycle * (cycles - 1) + last_cycle + ramp_down
     else:
-        # 單溫段
         ramp_up = abs(high_temp - ambient) / ramp_rate
         total_min = ramp_up + dwell_min + ramp_up
 
@@ -199,7 +197,6 @@ async def get_all_devices():
             if item.get("started_at")
             else None,
             "estimated_end_at": _calc_estimated_end_at(item),
-            # fix F1: 回傳 sim_cycle，讓前端執行資訊面板顯示正確 Cycle 數
             "sim_cycle": item.get("sim_cycle", 0),
         }
         for device_id, item in app.state.AICM_CACHE.items()
@@ -302,6 +299,8 @@ async def emergency_stop(device_id: str):
             "message": f"{device_id} 已在緊急停止狀態",
         }
 
+    operator = device.get("operator", "") or "未填寫"
+
     with SessionLocal() as db:
         db.add(
             ErrorLog(
@@ -311,7 +310,7 @@ async def emergency_stop(device_id: str):
                 sop_name=device.get("running_sop_name"),
                 temperature=device.get("temperature"),
                 humidity=device.get("humidity"),
-                note="操作人員觸發緊急停止",
+                note=f"操作人員觸發緊急停止（{operator}）",
                 completed_steps=device.get("completed_steps", 0),
                 total_steps=device.get("total_steps", 0),
                 created_at=_now_utc(),
@@ -328,16 +327,19 @@ async def emergency_stop(device_id: str):
             "completed_steps": 0,
             "started_at": None,
             "total_steps": 0,
+            "operator": "",
             "sim_phase": "idle",
             "sim_cycle": 0,
         }
     )
     _save_device_state(device_id, device)
-    print(f"🚨 [{device_id}] EMERGENCY STOP")
+    print(f"🚨 [{device_id}] EMERGENCY STOP by {operator}")
 
     asyncio.create_task(
         push_message(
-            f"🚨 [{device_id}] 緊急停止已觸發\n溫度：{device.get('temperature', 0.0):.1f}°C"
+            f"🚨 [{device_id}] 緊急停止已觸發\n"
+            f"操作人員：{operator}\n"
+            f"溫度：{device.get('temperature', 0.0):.1f}°C"
         )
     )
     return {"status": "success", "message": f"{device_id} 緊急停止已觸發"}
@@ -377,6 +379,7 @@ async def normal_stop(device_id: str):
             "completed_steps": 0,
             "started_at": None,
             "standard_id": None,
+            "operator": "",
             "sim_phase": "idle",
             "sim_cycle": 0,
         }
@@ -540,6 +543,7 @@ async def data_simulator():
                             "running_sop_name": "STANDBY",
                             "running_sop_id": None,
                             "standard_id": None,
+                            "operator": "",
                             "sim_phase": "idle",
                             "sim_cycle": 0,
                         }
