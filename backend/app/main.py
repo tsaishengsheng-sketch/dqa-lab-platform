@@ -41,7 +41,6 @@ async def lifespan(app: FastAPI):
             started_at = s.started_at
             if started_at is not None and started_at.tzinfo is None:
                 started_at = started_at.replace(tzinfo=datetime.timezone.utc)
-
             cache[device_id] = {
                 "temperature": s.temperature,
                 "humidity": s.humidity,
@@ -52,8 +51,9 @@ async def lifespan(app: FastAPI):
                 "active_sop_json": s.active_sop_json,
                 "completed_steps": s.completed_steps or 0,
                 "started_at": started_at,
-                # fix #6: 恢復時也要還原 cycle 狀態
-                "sim_phase": "running",
+                # fix B1: 恢復時設為 "idle"，讓 data_simulator 重新初始化
+                # sim_phase 會在下一個 loop 由 data_simulator 根據 SOP 參數決定起點
+                "sim_phase": "idle",
                 "sim_cycle": 0,
             }
             print(f"🔄 [{device_id}] 恢復狀態：{s.status}，溫度：{s.temperature}°C")
@@ -511,7 +511,7 @@ async def data_simulator():
                     dwell_counters[device_id] += 1
                     if dwell_counters[device_id] >= dwell_seconds:
                         dwell_counters[device_id] = 0
-                        if low_temp is not None and cycles > 1:
+                        if low_temp is not None:
                             item["sim_phase"] = "ramp_to_low2"
                         else:
                             item["sim_phase"] = "ramp_to_ambient"
@@ -565,10 +565,24 @@ async def data_simulator():
                     )
 
             elif status == "FINISHING":
+                # fix B6: 降溫速率改用 SOP 的 ramp_rate，而非寫死 0.4°C/s
+                # 從 active_sop_json 讀取，若已清除則 fallback 到 1.0°C/min
+                finishing_sop_json = item.get("active_sop_json")
+                if finishing_sop_json:
+                    try:
+                        finishing_sop = json.loads(finishing_sop_json)
+                        finishing_ramp = (finishing_sop.get("ramp_rate") or 1.0) / 60.0
+                    except Exception:
+                        finishing_ramp = 1.0 / 60.0
+                else:
+                    finishing_ramp = 1.0 / 60.0  # 預設 1°C/min
+
                 diff = 25.0 - current_temp
                 if abs(diff) > 0.5:
                     item["temperature"] = round(
-                        current_temp + (0.4 if diff > 0 else -0.4), 2
+                        current_temp
+                        + (finishing_ramp if diff > 0 else -finishing_ramp),
+                        2,
                     )
                 else:
                     item["temperature"] = 25.0
