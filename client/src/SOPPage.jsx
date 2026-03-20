@@ -47,6 +47,75 @@ function restoreSelectionFromSopId(sopId, standardTree) {
   return null;
 }
 
+// 自製確認 Modal（取代 window.confirm）
+const ConfirmModal = ({ message, onConfirm, onCancel }) => (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      zIndex: 1000,
+      background: "rgba(0,0,0,0.6)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    }}
+  >
+    <div
+      style={{
+        background: "#161b22",
+        border: "1px solid #30363d",
+        borderRadius: 10,
+        padding: "24px 28px",
+        maxWidth: 360,
+        width: "90%",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 13,
+          color: "#cdd9e5",
+          marginBottom: 20,
+          lineHeight: 1.6,
+        }}
+      >
+        {message}
+      </div>
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button
+          onClick={onCancel}
+          style={{
+            padding: "8px 16px",
+            background: "#21262d",
+            color: "#8b949e",
+            border: "1px solid #30363d",
+            borderRadius: 6,
+            cursor: "pointer",
+            fontSize: 12,
+          }}
+        >
+          取消
+        </button>
+        <button
+          onClick={onConfirm}
+          style={{
+            padding: "8px 16px",
+            background: "#da3633",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 700,
+          }}
+        >
+          確定
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 const SOPPage = ({ active = true }) => {
   const [selectedDevice, setSelectedDevice] = useState("KSON_CH01");
   const [allDevices, setAllDevices] = useState({});
@@ -62,6 +131,8 @@ const SOPPage = ({ active = true }) => {
   const [operator, setOperator] = useState(
     () => localStorage.getItem("dqa_operator") || "",
   );
+  // 自製 confirm modal 狀態
+  const [confirmModal, setConfirmModal] = useState(null); // { message, onConfirm }
 
   const historyFetchingRef = useRef(null);
   const lastHistoryMinuteRef = useRef(-1);
@@ -104,7 +175,7 @@ const SOPPage = ({ active = true }) => {
 
   useEffect(() => {
     if (pauseOptimistic && data.status !== "OFFLINE") setPauseOptimistic(null);
-  }, [data.status]); // eslint-disable-line
+  }, [data.status, pauseOptimistic]);
 
   useEffect(() => {
     api
@@ -187,7 +258,7 @@ const SOPPage = ({ active = true }) => {
     poll();
     const t = setInterval(poll, 3000);
     return () => clearInterval(t);
-  }, [selectedDevice, active, fetchHistory]); // eslint-disable-line
+  }, [selectedDevice, active, fetchHistory]);
 
   useEffect(() => {
     if (!treeLoaded) return;
@@ -217,18 +288,23 @@ const SOPPage = ({ active = true }) => {
     else updateDS(selectedDevice, { chartHistory: [], chartStartedAt: null });
   }, [selectedDevice]); // eslint-disable-line
 
+  const startedAt = allDevices[selectedDevice]?.started_at;
   useEffect(() => {
-    const startedAt = allDevices[selectedDevice]?.started_at;
     if (!startedAt) {
       updateDS(selectedDevice, { chartHistory: [], chartStartedAt: null });
       return;
     }
     fetchHistory(selectedDevice, startedAt);
-  }, [allDevices[selectedDevice]?.started_at]); // eslint-disable-line
+  }, [startedAt]); // eslint-disable-line
 
-  // operator 由 modal 確認後傳入，直接帶進 POST body
   const startSop = async (confirmedOperator) => {
     if (!testData || starting) return;
+    // 步驟檢查移到 API call 前，避免 finally 之後邏輯繼續跑
+    const sopSteps = testData.steps || [];
+    if (!sopSteps.length) {
+      setStartError("⚠️ SOP 步驟資料不完整，請確認後端設定後重試。");
+      return;
+    }
     setStartError("");
     setStarting(true);
     try {
@@ -237,11 +313,6 @@ const SOPPage = ({ active = true }) => {
         device_id: selectedDevice,
         operator: confirmedOperator || "",
       });
-      const sopSteps = testData.steps || [];
-      if (!sopSteps.length) {
-        setStartError("⚠️ SOP 步驟資料不完整，請確認後端設定後重試。");
-        return;
-      }
       updateDS(selectedDevice, {
         activeSop: { ...testData, steps: sopSteps },
         completedSteps: {},
@@ -277,28 +348,49 @@ const SOPPage = ({ active = true }) => {
     }
   };
 
-  const handleToggleStep = async (stepId, stepIndex) => {
+  // 取消步驟改用自製 modal 取代 window.confirm
+  const handleToggleStep = (stepId, stepIndex) => {
     const steps = ds.activeSop?.steps || [];
     const newCompleted = { ...ds.completedSteps };
+
     if (newCompleted[stepId]) {
-      if (!window.confirm(`取消「Step ${stepId}」將清除後續所有步驟，確定？`))
-        return;
-      steps.slice(stepIndex).forEach((s) => delete newCompleted[s.step_id]);
+      setConfirmModal({
+        message: `取消「Step ${stepId}」將清除後續所有步驟，確定？`,
+        onConfirm: async () => {
+          setConfirmModal(null);
+          steps.slice(stepIndex).forEach((s) => delete newCompleted[s.step_id]);
+          updateDS(selectedDevice, { completedSteps: newCompleted });
+          try {
+            await api.post(`/api/devices/${selectedDevice}/progress`, {
+              completed: Object.values(newCompleted).filter(Boolean).length,
+            });
+          } catch (e) {
+            console.error("[SOPPage] progress:", e);
+          }
+        },
+      });
     } else {
       newCompleted[stepId] = true;
-    }
-    updateDS(selectedDevice, { completedSteps: newCompleted });
-    try {
-      await api.post(`/api/devices/${selectedDevice}/progress`, {
-        completed: Object.values(newCompleted).filter(Boolean).length,
-      });
-    } catch (e) {
-      console.error("[SOPPage] progress:", e);
+      updateDS(selectedDevice, { completedSteps: newCompleted });
+      api
+        .post(`/api/devices/${selectedDevice}/progress`, {
+          completed: Object.values(newCompleted).filter(Boolean).length,
+        })
+        .catch((e) => console.error("[SOPPage] progress:", e));
     }
   };
 
   return (
     <div className="sop-page-layout">
+      {/* 自製 confirm modal */}
+      {confirmModal && (
+        <ConfirmModal
+          message={confirmModal.message}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
+      )}
+
       <MonitorSide
         selectedDevice={selectedDevice}
         allDevices={allDevices}
@@ -466,7 +558,10 @@ const SOPPage = ({ active = true }) => {
               {testData && (
                 <SafetyChecklist
                   operator={operator}
-                  onOperatorChange={setOperator}
+                  onOperatorChange={(val) => {
+                    setOperator(val);
+                    if (val) localStorage.setItem("dqa_operator", val);
+                  }}
                   safetyChecked={ds.safetyChecked}
                   onSafetyChange={(i) => {
                     const u = [...ds.safetyChecked];

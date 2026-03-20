@@ -6,6 +6,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 import asyncio
 import datetime
 import json
+import os
 import random
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
@@ -94,9 +95,13 @@ app.include_router(errors_router)
 app.include_router(ai_router)
 app.include_router(line_router)
 
+# CORS：從環境變數讀取，預設只允許本地開發；Railway 部署時設定 ALLOWED_ORIGINS
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
+allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -390,7 +395,7 @@ async def normal_stop(device_id: str):
 
 async def data_simulator():
     write_counters: dict = {}
-    dwell_counters: dict = {}
+    dwell_start_times: dict = {}  # 改用真實時間戳取代計數器，避免 sleep 漂移
 
     while True:
         cache = app.state.AICM_CACHE
@@ -403,8 +408,6 @@ async def data_simulator():
 
             if device_id not in write_counters:
                 write_counters[device_id] = 0
-            if device_id not in dwell_counters:
-                dwell_counters[device_id] = 0
 
             if status == "RUNNING":
                 standard_id = item.get("standard_id")
@@ -437,7 +440,7 @@ async def data_simulator():
                         item["sim_phase"] = "ramp_to_high"
                     item["sim_cycle"] = 0
                     sim_phase = item["sim_phase"]
-                    dwell_counters[device_id] = 0
+                    dwell_start_times.pop(device_id, None)
 
                 max_change = max_ramp_rate / 60.0
 
@@ -461,13 +464,15 @@ async def data_simulator():
                     if abs(new_temp - high_temp) <= 0.1:
                         new_temp = high_temp
                         item["sim_phase"] = "dwell_high"
-                        dwell_counters[device_id] = 0
+                        dwell_start_times[f"{device_id}_high"] = now
 
                 elif sim_phase == "dwell_high":
                     new_temp = high_temp
-                    dwell_counters[device_id] += 1
-                    if dwell_counters[device_id] >= dwell_seconds:
-                        dwell_counters[device_id] = 0
+                    dwell_key = f"{device_id}_high"
+                    dwell_start = dwell_start_times.get(dwell_key, now)
+                    elapsed = (now - dwell_start).total_seconds()
+                    if elapsed >= dwell_seconds:
+                        dwell_start_times.pop(dwell_key, None)
                         if low_temp is not None:
                             item["sim_phase"] = "ramp_to_low2"
                         else:
@@ -478,13 +483,15 @@ async def data_simulator():
                     if abs(new_temp - low_temp) <= 0.1:
                         new_temp = low_temp
                         item["sim_phase"] = "dwell_low"
-                        dwell_counters[device_id] = 0
+                        dwell_start_times[f"{device_id}_low"] = now
 
                 elif sim_phase == "dwell_low":
                     new_temp = low_temp
-                    dwell_counters[device_id] += 1
-                    if dwell_counters[device_id] >= dwell_seconds:
-                        dwell_counters[device_id] = 0
+                    dwell_key = f"{device_id}_low"
+                    dwell_start = dwell_start_times.get(dwell_key, now)
+                    elapsed = (now - dwell_start).total_seconds()
+                    if elapsed >= dwell_seconds:
+                        dwell_start_times.pop(dwell_key, None)
                         item["sim_cycle"] = sim_cycle + 1
                         if item["sim_cycle"] < cycles:
                             item["sim_phase"] = "ramp_to_high"

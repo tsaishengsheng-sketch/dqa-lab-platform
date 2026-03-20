@@ -53,6 +53,8 @@ const useCountdown = (estimatedEndAt) => {
   }, [estimatedEndAt]);
 
   if (remaining === null) return null;
+  // 修改：剩餘 0 秒時顯示「—」而非 00:00:00，避免誤導使用者
+  if (remaining === 0) return "—";
   const h = Math.floor(remaining / 3600);
   const m = Math.floor((remaining % 3600) / 60);
   const s = remaining % 60;
@@ -269,7 +271,8 @@ const DeviceCard = ({ device, selected, onClick }) => {
               fontSize: 14,
               fontWeight: 700,
               fontFamily: "monospace",
-              color: countdown === "00:00:00" ? "#f85149" : sc.color,
+              // 修改：「—」用灰色，正常倒數用狀態色
+              color: countdown === "—" ? "#484f58" : sc.color,
             }}
           >
             {countdown}
@@ -280,27 +283,42 @@ const DeviceCard = ({ device, selected, onClick }) => {
   );
 };
 
+// 修改：報告下載改用 axios blob，帶 X-Demo-Password header
+const downloadCsv = async (execId, sopId) => {
+  try {
+    const res = await api.get(`/api/reports/csv/${execId}`, {
+      responseType: "blob",
+    });
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const a = document.createElement("a");
+    a.href = url;
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const safeSopId = (sopId || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_");
+    a.download = `${safeSopId}_${date}_${execId}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("[Dashboard] CSV download failed:", e);
+    alert("❌ 報告下載失敗，請確認後端連線。");
+  }
+};
+
 const Dashboard = ({ active = true }) => {
   const [devices, setDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState("KSON_CH01");
-
-  // fix F2: historyMap 改為 useState，切換設備時立即觸發 re-render
   const [historyMap, setHistoryMap] = useState(() =>
     Object.fromEntries(DEVICE_IDS.map((id) => [id, []])),
   );
-
-  // fix F3: 每台設備上次 fetch history 的 started_at，用來判斷是否需要重新拉
   const lastStartedAtRef = useRef(
     Object.fromEntries(DEVICE_IDS.map((id) => [id, null])),
   );
-  // fix F3: 每台設備上次 fetch history 的時間戳（分鐘），用來控制刷新頻率
   const lastFetchMinuteRef = useRef(
     Object.fromEntries(DEVICE_IDS.map((id) => [id, -1])),
   );
-
   const [executions, setExecutions] = useState([]);
 
-  // fix F2 F3: 統一的 history fetch 函式，改為從 /history API 取資料
   const fetchHistory = useCallback((deviceId) => {
     api
       .get(`/api/devices/${deviceId}/history`)
@@ -315,47 +333,35 @@ const Dashboard = ({ active = true }) => {
       .catch((err) => console.error("[Dashboard] history fetch:", err));
   }, []);
 
-  // fix F2: selectedDevice 改變時立即 fetch，不等輪詢
   useEffect(() => {
     fetchHistory(selectedDevice);
   }, [selectedDevice, fetchHistory]);
 
   useEffect(() => {
     if (!active) return;
-
     const fetchDevices = async () => {
       try {
         const res = await api.get("/api/devices");
         setDevices(res.data);
-
-        // fix F3: 對每台 RUNNING/PAUSED 設備，每分鐘從 /history 刷新一次
-        // 不再依賴「每分鐘前 10 秒」的脆弱窗口，改為比對分鐘數控制頻率
         const now = new Date();
         const currentMinute = now.getHours() * 60 + now.getMinutes();
-
         res.data.forEach((d) => {
           const id = d.device_id;
           const isRunning = ["RUNNING", "PAUSED", "FINISHING"].includes(
             d.status,
           );
-
-          // 如果 started_at 變了（新測試開始），立即重新 fetch
           if (d.started_at && d.started_at !== lastStartedAtRef.current[id]) {
             lastStartedAtRef.current[id] = d.started_at;
             lastFetchMinuteRef.current[id] = currentMinute;
             fetchHistory(id);
             return;
           }
-
-          // RUNNING/PAUSED/FINISHING 時，每分鐘刷新一次選中的設備
           if (isRunning && id === selectedDevice) {
             if (currentMinute !== lastFetchMinuteRef.current[id]) {
               lastFetchMinuteRef.current[id] = currentMinute;
               fetchHistory(id);
             }
           }
-
-          // 狀態變回 IDLE 時，清空 history
           if (d.status === "IDLE" && lastStartedAtRef.current[id] !== null) {
             lastStartedAtRef.current[id] = null;
             setHistoryMap((prev) => ({ ...prev, [id]: [] }));
@@ -365,7 +371,6 @@ const Dashboard = ({ active = true }) => {
         console.error("[Dashboard] devices fetch:", err);
       }
     };
-
     const interval = setInterval(fetchDevices, 10000);
     fetchDevices();
     return () => clearInterval(interval);
@@ -389,8 +394,6 @@ const Dashboard = ({ active = true }) => {
   const idleCount = devices.filter((d) =>
     ["IDLE", "OFFLINE"].includes(d.status),
   ).length;
-
-  // fix F2: 直接從 state 取，切換後立即反映
   const history = historyMap[selectedDevice] || [];
 
   return (
@@ -629,7 +632,8 @@ const Dashboard = ({ active = true }) => {
           >
             <thead>
               <tr style={{ borderBottom: "1px solid #30363d" }}>
-                {["ID", "SOP ID", "設備", "執行人員", "測試開始", "報告"].map(
+                {/* 修改：SOP ID 欄位改為「測試名稱」，顯示人類可讀的名稱 */}
+                {["ID", "測試名稱", "設備", "執行人員", "測試開始", "報告"].map(
                   (h) => (
                     <th
                       key={h}
@@ -652,14 +656,9 @@ const Dashboard = ({ active = true }) => {
                   <td style={{ padding: "8px 12px", color: "#484f58" }}>
                     #{ex.id}
                   </td>
-                  <td
-                    style={{
-                      padding: "8px 12px",
-                      color: "#cdd9e5",
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    {ex.sop_id}
+                  <td style={{ padding: "8px 12px", color: "#cdd9e5" }}>
+                    {/* 優先顯示 sop_name，沒有就 fallback 到 sop_id */}
+                    <span title={ex.sop_id}>{ex.sop_name || ex.sop_id}</span>
                   </td>
                   <td
                     style={{
@@ -677,13 +676,9 @@ const Dashboard = ({ active = true }) => {
                     {ex.test_started_at || ex.created_at}
                   </td>
                   <td style={{ padding: "8px 12px" }}>
+                    {/* 修改：改用 axios blob 下載，帶 auth header */}
                     <button
-                      onClick={() =>
-                        window.open(
-                          `${API_BASE}/api/reports/csv/${ex.id}`,
-                          "_blank",
-                        )
-                      }
+                      onClick={() => downloadCsv(ex.id, ex.sop_id)}
                       style={{
                         padding: "4px 10px",
                         background: "#1f6feb",

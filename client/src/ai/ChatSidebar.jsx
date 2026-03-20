@@ -22,7 +22,6 @@ export default function ChatSidebar({
   const [editingTitle, setEditingTitle] = useState("");
   const [newGroupInput, setNewGroupInput] = useState("");
   const [showGroupInput, setShowGroupInput] = useState(false);
-  // fix: 移除 movingId — 移動分組已改為拖曳，select UI 已廢棄，movingId 是死 code
   const [dragId, setDragId] = useState(null);
   const [dragOverGroup, setDragOverGroup] = useState(null);
 
@@ -55,6 +54,10 @@ export default function ChatSidebar({
   };
 
   const activeConv = conversations[activeId];
+
+  // 修改：標題超過 20 字截斷，完整標題放在 title tooltip
+  const truncateTitle = (title) =>
+    title && title.length > 20 ? title.slice(0, 20) + "…" : title;
 
   return (
     <aside
@@ -181,8 +184,9 @@ export default function ChatSidebar({
                                   "transparent";
                             }}
                           >
+                            {/* 修改：截斷標題，完整標題放 title tooltip */}
                             <span style={S.convTitle} title={conv.title}>
-                              {conv.title}
+                              {truncateTitle(conv.title)}
                             </span>
                             <div style={S.convActions}>
                               <button
