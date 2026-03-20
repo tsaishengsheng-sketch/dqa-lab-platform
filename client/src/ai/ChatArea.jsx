@@ -38,7 +38,6 @@ export default function ChatArea({
   onStop,
   onRetry,
   onInputChange,
-  onKeyDown,
 }) {
   return (
     <div style={S.main}>
@@ -94,8 +93,7 @@ export default function ChatArea({
           style={S.textarea}
           value={input}
           onChange={onInputChange}
-          onKeyDown={onKeyDown}
-          placeholder="描述你的測試需求，連按兩下 Enter 送出..."
+          placeholder="描述你的測試需求，按送出按鈕發送..."
           rows={3}
           disabled={loading}
         />

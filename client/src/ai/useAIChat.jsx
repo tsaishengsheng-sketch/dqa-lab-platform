@@ -33,7 +33,6 @@ export default function useAIChat() {
   const startTimeRef = useRef(null);
   const userScrolledUpRef = useRef(false);
   const activeIdRef = useRef(null);
-  const lastKeyWasEnterRef = useRef(false); // 雙 Enter 偵測
 
   const activeId = store.activeConversationId;
   const conversations = store.conversations;
@@ -166,8 +165,6 @@ export default function useAIChat() {
 
   const handleInputChange = useCallback((e) => {
     setInput(e.target.value);
-    // 只要有輸入就重置雙 Enter 狀態
-    lastKeyWasEnterRef.current = false;
     const el = e.target;
     el.style.height = "auto";
     const lh = 22;
@@ -213,7 +210,6 @@ export default function useAIChat() {
       const rawMsg = (text !== undefined ? text : input).trim();
       if (!rawMsg || loading) return;
 
-      lastKeyWasEnterRef.current = false;
       setInput("");
       if (textareaRef.current) textareaRef.current.style.height = "auto";
 
@@ -311,32 +307,11 @@ export default function useAIChat() {
     setLoading(false);
     setStreamText("");
     streamTextRef.current = "";
-    lastKeyWasEnterRef.current = false;
     inputRef.current?.focus();
   }, [updateMessages]);
 
-  // 雙 Enter 送出：第一下 Enter 換行，第二下連續 Enter 送出（清除尾端空行）
-  const handleKeyDown = useCallback(
-    (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        if (lastKeyWasEnterRef.current) {
-          // 第二下 Enter：送出，去掉尾端空行
-          e.preventDefault();
-          const trimmed = input.trimEnd();
-          if (trimmed) sendMessage(trimmed);
-          lastKeyWasEnterRef.current = false;
-        } else {
-          // 第一下 Enter：換行，記錄狀態
-          lastKeyWasEnterRef.current = true;
-          // 讓 textarea 自然換行，不 preventDefault
-        }
-      } else {
-        // 任何其他鍵都重置
-        lastKeyWasEnterRef.current = false;
-      }
-    },
-    [sendMessage, input],
-  );
+  // Enter 只換行，送出靠按鈕
+  const handleKeyDown = useCallback(() => {}, []);
 
   return {
     activeId,
