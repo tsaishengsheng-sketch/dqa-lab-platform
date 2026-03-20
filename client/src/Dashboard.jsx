@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import api, { API_BASE } from "./api";
 import {
   LineChart,
@@ -283,26 +283,42 @@ const DeviceCard = ({ device, selected, onClick }) => {
 const Dashboard = ({ active = true }) => {
   const [devices, setDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState("KSON_CH01");
-  const historyRef = useRef(
+
+  // fix F2: historyMap 改為 useState，切換設備時立即觸發 re-render
+  const [historyMap, setHistoryMap] = useState(() =>
     Object.fromEntries(DEVICE_IDS.map((id) => [id, []])),
   );
-  const [historyTick, setHistoryTick] = useState(0);
-  const lastMinuteRef = useRef(-1);
+
+  // fix F3: 每台設備上次 fetch history 的 started_at，用來判斷是否需要重新拉
+  const lastStartedAtRef = useRef(
+    Object.fromEntries(DEVICE_IDS.map((id) => [id, null])),
+  );
+  // fix F3: 每台設備上次 fetch history 的時間戳（分鐘），用來控制刷新頻率
+  const lastFetchMinuteRef = useRef(
+    Object.fromEntries(DEVICE_IDS.map((id) => [id, -1])),
+  );
+
   const [executions, setExecutions] = useState([]);
 
-  useEffect(() => {
+  // fix F2 F3: 統一的 history fetch 函式，改為從 /history API 取資料
+  const fetchHistory = useCallback((deviceId) => {
     api
-      .get(`/api/devices/${selectedDevice}/history`)
+      .get(`/api/devices/${deviceId}/history`)
       .then((r) => {
-        historyRef.current[selectedDevice] = r.data.map((p) => ({
+        const data = r.data.map((p) => ({
           time: p.time,
           temperature: p.temperature,
           humidity: p.temperature < 0 ? null : p.humidity,
         }));
-        setHistoryTick((t) => t + 1);
+        setHistoryMap((prev) => ({ ...prev, [deviceId]: data }));
       })
       .catch((err) => console.error("[Dashboard] history fetch:", err));
-  }, [selectedDevice]);
+  }, []);
+
+  // fix F2: selectedDevice 改變時立即 fetch，不等輪詢
+  useEffect(() => {
+    fetchHistory(selectedDevice);
+  }, [selectedDevice, fetchHistory]);
 
   useEffect(() => {
     if (!active) return;
@@ -312,34 +328,48 @@ const Dashboard = ({ active = true }) => {
         const res = await api.get("/api/devices");
         setDevices(res.data);
 
+        // fix F3: 對每台 RUNNING/PAUSED 設備，每分鐘從 /history 刷新一次
+        // 不再依賴「每分鐘前 10 秒」的脆弱窗口，改為比對分鐘數控制頻率
         const now = new Date();
         const currentMinute = now.getHours() * 60 + now.getMinutes();
-        if (now.getSeconds() < 10 && currentMinute !== lastMinuteRef.current) {
-          lastMinuteRef.current = currentMinute;
-          const label = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-          res.data.forEach((d) => {
-            const existing = historyRef.current[d.device_id];
-            if (existing) {
-              const buf = [...existing];
-              buf.push({
-                time: label,
-                temperature: d.temperature,
-                humidity: d.temperature < 0 ? null : d.humidity,
-              });
-              if (buf.length > 5760) buf.shift();
-              historyRef.current[d.device_id] = buf;
+
+        res.data.forEach((d) => {
+          const id = d.device_id;
+          const isRunning = ["RUNNING", "PAUSED", "FINISHING"].includes(
+            d.status,
+          );
+
+          // 如果 started_at 變了（新測試開始），立即重新 fetch
+          if (d.started_at && d.started_at !== lastStartedAtRef.current[id]) {
+            lastStartedAtRef.current[id] = d.started_at;
+            lastFetchMinuteRef.current[id] = currentMinute;
+            fetchHistory(id);
+            return;
+          }
+
+          // RUNNING/PAUSED/FINISHING 時，每分鐘刷新一次選中的設備
+          if (isRunning && id === selectedDevice) {
+            if (currentMinute !== lastFetchMinuteRef.current[id]) {
+              lastFetchMinuteRef.current[id] = currentMinute;
+              fetchHistory(id);
             }
-          });
-          setHistoryTick((t) => t + 1);
-        }
+          }
+
+          // 狀態變回 IDLE 時，清空 history
+          if (d.status === "IDLE" && lastStartedAtRef.current[id] !== null) {
+            lastStartedAtRef.current[id] = null;
+            setHistoryMap((prev) => ({ ...prev, [id]: [] }));
+          }
+        });
       } catch (err) {
         console.error("[Dashboard] devices fetch:", err);
       }
     };
+
     const interval = setInterval(fetchDevices, 10000);
     fetchDevices();
     return () => clearInterval(interval);
-  }, [active]);
+  }, [active, selectedDevice, fetchHistory]);
 
   useEffect(() => {
     if (!active) return;
@@ -359,7 +389,9 @@ const Dashboard = ({ active = true }) => {
   const idleCount = devices.filter((d) =>
     ["IDLE", "OFFLINE"].includes(d.status),
   ).length;
-  const history = historyRef.current[selectedDevice] || [];
+
+  // fix F2: 直接從 state 取，切換後立即反映
+  const history = historyMap[selectedDevice] || [];
 
   return (
     <div
