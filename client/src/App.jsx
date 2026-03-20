@@ -12,7 +12,7 @@ const PAGES = [
   { key: "/ai", label: "AI 諮詢" },
 ];
 
-const SESSION_DURATION = 8 * 60 * 60 * 1000; // 8 小時
+const SESSION_DURATION = 8 * 60 * 60 * 1000;
 
 function isSessionValid() {
   const pwd = localStorage.getItem("demo_password");
@@ -88,15 +88,19 @@ const NavBar = ({ current, onChange, onLogout }) => (
   </nav>
 );
 
+const DEMO_PASSWORD = "poqwieuqrpsky4106764";
+
 function LoginPage({ onLogin }) {
   const [pwdInput, setPwdInput] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [backendOffline, setBackendOffline] = useState(false);
 
   const handleLogin = async () => {
     if (!pwdInput.trim()) return;
     setLoading(true);
     setError("");
+    setBackendOffline(false);
     try {
       const res = await fetch(`${API_BASE}/api/devices`, {
         headers: { "X-Demo-Password": pwdInput },
@@ -110,7 +114,7 @@ function LoginPage({ onLogin }) {
         onLogin();
       }
     } catch {
-      setError("連線失敗，請確認後端是否正常啟動");
+      setBackendOffline(true);
     } finally {
       setLoading(false);
     }
@@ -138,7 +142,8 @@ function LoginPage({ onLogin }) {
           flexDirection: "column",
           alignItems: "center",
           gap: 16,
-          minWidth: 320,
+          minWidth: 340,
+          maxWidth: 400,
         }}
       >
         <span style={{ color: "#58a6ff", fontWeight: 700, fontSize: 22 }}>
@@ -147,57 +152,169 @@ function LoginPage({ onLogin }) {
         <span style={{ color: "#8b949e", fontSize: 13 }}>
           KSON AICM Digital Twin
         </span>
-        <div
-          style={{
-            width: "100%",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            marginTop: 8,
-          }}
-        >
-          <input
-            type="password"
-            placeholder="請輸入存取密碼"
-            value={pwdInput}
-            onChange={(e) => setPwdInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+
+        {backendOffline ? (
+          <div
             style={{
-              padding: "10px 14px",
-              borderRadius: 6,
-              border: "1px solid #30363d",
-              background: "#0d1117",
-              color: "#cdd9e5",
-              fontSize: 14,
               width: "100%",
-              boxSizing: "border-box",
-              outline: "none",
-            }}
-          />
-          <button
-            onClick={handleLogin}
-            disabled={loading}
-            style={{
-              padding: "10px",
-              borderRadius: 6,
-              background: loading ? "#21262d" : "#238636",
-              color: loading ? "#484f58" : "#fff",
-              border: "none",
-              cursor: loading ? "not-allowed" : "pointer",
-              fontWeight: 700,
-              fontSize: 14,
-              transition: "all .15s",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
             }}
           >
-            {loading ? "驗證中..." : "進入系統"}
-          </button>
-        </div>
-        {error && (
-          <span style={{ color: "#f85149", fontSize: 13 }}>{error}</span>
+            <div
+              style={{
+                padding: "12px 14px",
+                background: "#2d1f00",
+                border: "1px solid #f0a50044",
+                borderRadius: 8,
+              }}
+            >
+              <div
+                style={{
+                  color: "#f0a500",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  marginBottom: 6,
+                }}
+              >
+                後端目前 offline
+              </div>
+              <div style={{ color: "#8b949e", fontSize: 12, lineHeight: 1.6 }}>
+                這是 Railway Trial 方案，平常處於休眠狀態。請依以下步驟喚醒：
+              </div>
+            </div>
+            <ol
+              style={{
+                color: "#8b949e",
+                fontSize: 12,
+                lineHeight: 2,
+                paddingLeft: 20,
+                margin: 0,
+              }}
+            >
+              <li>前往 Railway Dashboard</li>
+              <li>找到 dqa-lab-digital-twin 專案</li>
+              <li>點選 Redeploy</li>
+              <li>等待約 30 秒後重新整理此頁</li>
+            </ol>
+            <a
+              href="https://railway.app"
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "block",
+                textAlign: "center",
+                padding: "9px",
+                background: "#21262d",
+                color: "#58a6ff",
+                borderRadius: 6,
+                fontSize: 12,
+                textDecoration: "none",
+                fontWeight: 600,
+                border: "1px solid #30363d",
+              }}
+            >
+              前往 Railway Dashboard
+            </a>
+            <button
+              onClick={() => setBackendOffline(false)}
+              style={{
+                padding: "7px",
+                background: "transparent",
+                color: "#484f58",
+                border: "1px solid #30363d",
+                borderRadius: 6,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              返回登入
+            </button>
+          </div>
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              marginTop: 8,
+            }}
+          >
+            <input
+              type="password"
+              placeholder="請輸入存取密碼"
+              value={pwdInput}
+              onChange={(e) => setPwdInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 6,
+                border: "1px solid #30363d",
+                background: "#0d1117",
+                color: "#cdd9e5",
+                fontSize: 14,
+                width: "100%",
+                boxSizing: "border-box",
+                outline: "none",
+              }}
+            />
+            <button
+              onClick={handleLogin}
+              disabled={loading}
+              style={{
+                padding: "10px",
+                borderRadius: 6,
+                background: loading ? "#21262d" : "#238636",
+                color: loading ? "#484f58" : "#fff",
+                border: "none",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontWeight: 700,
+                fontSize: 14,
+                transition: "all .15s",
+              }}
+            >
+              {loading ? "驗證中..." : "進入系統"}
+            </button>
+            {error && (
+              <span style={{ color: "#f85149", fontSize: 13 }}>{error}</span>
+            )}
+            <div
+              style={{
+                padding: "10px 12px",
+                background: "#0d1117",
+                border: "1px solid #21262d",
+                borderRadius: 6,
+                fontSize: 11,
+                color: "#484f58",
+                lineHeight: 1.6,
+              }}
+            >
+              Demo 密碼：
+              <span
+                style={{
+                  color: "#8b949e",
+                  fontFamily: "monospace",
+                  marginLeft: 4,
+                  cursor: "pointer",
+                  userSelect: "all",
+                  textDecoration: "underline dotted",
+                }}
+                onClick={() => setPwdInput(DEMO_PASSWORD)}
+                title="點擊自動填入"
+              >
+                {DEMO_PASSWORD}
+              </span>
+              <span style={{ marginLeft: 6, color: "#3fb950", fontSize: 10 }}>
+                點擊自動填入
+              </span>
+            </div>
+            <span style={{ color: "#484f58", fontSize: 11 }}>
+              Session 有效期限：8 小時
+            </span>
+          </div>
         )}
-        <span style={{ color: "#484f58", fontSize: 11 }}>
-          Session 有效期限：8 小時
-        </span>
       </div>
     </div>
   );
