@@ -16,7 +16,17 @@ const ExecutionPanel = ({
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
+  const buildFilename = (execId) => {
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const sopId = (activeSop?.sop_id || "unknown").replace(
+      /[^a-zA-Z0-9_-]/g,
+      "_",
+    );
+    return `${selectedDevice}_${sopId}_${date}_${execId}.csv`;
+  };
+
   const downloadReport = async (execId) => {
+    if (downloading) return;
     setDownloading(true);
     try {
       const res = await api.get(`/api/reports/csv/${execId}`, {
@@ -25,7 +35,7 @@ const ExecutionPanel = ({
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement("a");
       a.href = url;
-      a.download = `report_${execId}.csv`;
+      a.download = buildFilename(execId);
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -38,7 +48,7 @@ const ExecutionPanel = ({
   };
 
   const saveExecution = async () => {
-    if (saving) return;
+    if (saving || downloading) return;
     setSaving(true);
     try {
       const stepPayload = activeSop.steps.map((s) => ({
@@ -129,7 +139,7 @@ const ExecutionPanel = ({
     <div style={{ marginTop: 12 }}>
       <button
         onClick={saveExecution}
-        disabled={saving}
+        disabled={saving || downloading}
         style={{
           width: "100%",
           padding: "10px",

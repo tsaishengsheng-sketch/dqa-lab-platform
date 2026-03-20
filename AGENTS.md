@@ -35,8 +35,8 @@
 | 儀表板 | ✅ | 六狀態、趨勢圖、倒數計時、設備切換即時更新 |
 | 登入頁 | ✅ | offline fallback、Demo 密碼提示 |
 | SOPPage 重構 | ✅ | 拆分為 10 個子元件，主頁面壓到 ~323 行（2026-03-20） |
-| operator 流程修復 | ✅ | 啟動前 modal 確認姓名、POST /api/sop/start 帶入 operator、EMERGENCY 推播帶操作人員姓名（2026-03-20） |
-| 報告下載修復 | ✅ | ExecutionPanel 移除冗餘 reportUrl state，改由 savedExecutionId 計算 URL；備用 `<a>` 連結已緩解 window.open 攔截問題（2026-03-20） |
+| operator 流程修復 | ✅ | 啟動前 inline modal 確認姓名、POST /api/sop/start 帶入 operator、EMERGENCY 推播帶操作人員姓名（2026-03-20） |
+| 報告下載修復 | ✅ | axios blob 下載帶 auth header、檔名格式 `{device_id}_{sop_id}_{日期}_{execId}.csv`、移除冗餘 reportUrl state（2026-03-20） |
 
 ### 待開發（依優先度）
 
@@ -62,7 +62,7 @@ src/
     ConditionCard.jsx      # 測試條件摘要卡片
     SelectGroup.jsx        # 單一步驟選擇器（法規/版本/條件 共用）
     StepList.jsx           # SOP 步驟勾選清單 + 進度條
-    ExecutionPanel.jsx     # 儲存執行紀錄 + 報告下載
+    ExecutionPanel.jsx     # 儲存執行紀錄 + blob 報告下載
     ExecutionInfoPanel.jsx # 執行中資訊面板（Pgm/Step/Free Time/Cycle）
     SafetyChecklist.jsx    # 上架驗證注意事項 + 啟動前 modal + 啟動按鈕
     MonitorSide.jsx        # 左側監控欄（設備選擇、任務、圖表）
@@ -74,7 +74,7 @@ src/
 **UX 設計**：
 - 操作人員姓名：點擊啟動按鈕後跳出 inline modal，填姓名並確認後才真正送出啟動
 - operator 在 `startSop()` 時帶入 POST body，後端存進 cache，EMERGENCY 推播時帶出姓名
-- `saveExecution()` 成功後自動呼叫 `window.open` 下載報告，同時顯示備用 `<a>` 連結
+- 報告下載：axios blob + `X-Demo-Password` header，檔名格式 `{device_id}_{sop_id}_{日期}_{execId}.csv`
 - 步驟為**手動勾選**（Phase 3 自動確認架構實作後升級）
 - `ExecutionPanel` 的報告 URL 由 `savedExecutionId` 直接計算，不另存 local state
 
