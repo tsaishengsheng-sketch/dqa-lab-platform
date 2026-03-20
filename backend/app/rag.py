@@ -8,6 +8,7 @@ import re
 import asyncio
 import pickle
 from pathlib import Path
+from functools import lru_cache
 import numpy as np
 from typing import Optional
 from google import genai
@@ -17,11 +18,9 @@ from .standards import get_standard_tree
 GEMINI_EMBED_MODEL = "gemini-embedding-001"
 RAG_CACHE_PATH = Path(__file__).parent.parent / "rag_cache.pkl"
 
-# In-memory 知識庫
 _CHUNKS: list[dict] = []
-_EMBEDDINGS: Optional[np.ndarray] = None  # shape: (N, dim)
+_EMBEDDINGS: Optional[np.ndarray] = None
 
-# 使用者可能的簡寫 → 對應到 STANDARD_TREE 的完整 std_key
 _STD_ALIAS_MAP: dict[str, str] = {
     "IEC 60068": "IEC 60068",
     "60068": "IEC 60068",
@@ -42,6 +41,10 @@ _STD_ALIAS_MAP: dict[str, str] = {
 
 _COMPARE_KEYWORDS = ["和", "與", "vs", "比較", "差異", "不同"]
 
+# query embedding LRU cache（最多快取 64 筆，節省 Gemini Embedding 配額）
+_query_embed_cache: dict[str, np.ndarray] = {}
+_QUERY_CACHE_MAX = 64
+
 
 def _get_client() -> genai.Client:
     api_key = os.getenv("GEMINI_API_KEY", "")
@@ -49,7 +52,7 @@ def _get_client() -> genai.Client:
 
 
 def _build_chunks() -> list[dict]:
-    """將 STANDARD_TREE 展開成 chunk，每個包含完整參數與說明。"""
+    """將 STANDARD_TREE 展開成 chunk，包含完整參數、說明與語義標籤。"""
     tree = get_standard_tree()
     chunks = []
 
@@ -82,6 +85,31 @@ def _build_chunks() -> list[dict]:
                         f"通電狀態：{'通電' if test['power_on'] else '非通電'}"
                     )
 
+                # 語義標籤：幫助口語查詢命中
+                semantic_tags = []
+                has_low = test.get("low_temperature") is not None
+                has_high = (
+                    test.get("high_temperature") is not None
+                    or test.get("target_temperature") is not None
+                )
+                has_humidity = test.get("humidity_rh_percent") is not None
+                has_cycles = (test.get("cycles") or 1) > 1
+                is_powered = test.get("power_on", False)
+
+                if is_powered and has_low:
+                    semantic_tags.append("低溫開關機 低溫工作 通電低溫")
+                elif has_low and not is_powered:
+                    semantic_tags.append("低溫儲存 低溫測試 非通電低溫")
+                if has_high and not has_low and not has_humidity:
+                    semantic_tags.append("純高溫 乾熱 高溫測試")
+                if has_humidity:
+                    semantic_tags.append("高溫高濕 濕熱 濕度測試")
+                if has_cycles and has_low and has_high:
+                    semantic_tags.append("溫度循環 熱衝擊 循環測試")
+
+                if semantic_tags:
+                    parts.append(f"語義標籤：{'、'.join(semantic_tags)}")
+
                 chunks.append(
                     {
                         "std_key": std_key,
@@ -109,7 +137,6 @@ async def _embed(texts: list[str], task_type: str = "RETRIEVAL_DOCUMENT") -> np.
             config=genai_types.EmbedContentConfig(task_type=task_type),
         )
         all_vectors.extend([e.values for e in result.embeddings])
-        # 不是最後一批才等
         if i + BATCH_SIZE < len(texts):
             await asyncio.sleep(5)
 
@@ -148,13 +175,29 @@ async def warmup_rag():
         _EMBEDDINGS = None
 
 
+async def _embed_query_cached(query: str) -> np.ndarray:
+    """帶 LRU cache 的 query embedding，避免同對話重複打 API。"""
+    if query in _query_embed_cache:
+        return _query_embed_cache[query]
+
+    q_vec = await _embed([query], task_type="RETRIEVAL_QUERY")
+    q_norm = q_vec / np.clip(np.linalg.norm(q_vec), 1e-9, None)
+
+    # 超過上限時清掉最舊的一筆
+    if len(_query_embed_cache) >= _QUERY_CACHE_MAX:
+        oldest_key = next(iter(_query_embed_cache))
+        del _query_embed_cache[oldest_key]
+
+    _query_embed_cache[query] = q_norm
+    return q_norm
+
+
 async def retrieve(query: str, top_k: int = 5) -> list[dict]:
     """查詢最相關的 top_k 個測試條件。"""
     if _EMBEDDINGS is None or len(_CHUNKS) == 0:
         return []
 
-    q_vec = await _embed([query], task_type="RETRIEVAL_QUERY")
-    q_norm = q_vec / np.clip(np.linalg.norm(q_vec), 1e-9, None)
+    q_norm = await _embed_query_cached(query)
     scores = (_EMBEDDINGS @ q_norm.T).flatten()
     top_indices = np.argsort(scores)[::-1][:top_k]
 
