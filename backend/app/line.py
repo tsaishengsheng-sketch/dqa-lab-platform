@@ -14,8 +14,6 @@ logger = logging.getLogger("line_bot")
 router = APIRouter(prefix="/api/line", tags=["line"])
 
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
-LINE_USER_ID = os.getenv("LINE_USER_ID", "")
 
 # LINE API 端點
 REPLY_URL = "https://api.line.me/v2/bot/message/reply"
@@ -36,20 +34,24 @@ STATUS_CONFIG = {
 
 async def push_message(text: str):
     """主動推播訊息給指定 User ID (供 main.py 呼叫)"""
-    if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_USER_ID:
+    token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
+    user_id = os.getenv("LINE_USER_ID", "")
+
+    if not token or not user_id:
         logger.warning("[LINE] 未設定 TOKEN 或 USER_ID，跳過推播")
         return
 
+    print(f"[LINE DEBUG] token prefix: {token[:20]!r}")
     async with httpx.AsyncClient() as client:
         try:
             res = await client.post(
                 PUSH_URL,
                 headers={
-                    "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
+                    "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "to": LINE_USER_ID,
+                    "to": user_id,
                     "messages": [{"type": "text", "text": text}],
                 },
                 timeout=10.0,
@@ -62,10 +64,11 @@ async def push_message(text: str):
 
 def _verify_signature(body: bytes, signature: str) -> bool:
     """驗證來自 LINE 的 Webhook 請求簽名"""
-    if not LINE_CHANNEL_SECRET:
+    secret = os.getenv("LINE_CHANNEL_SECRET", "")
+    if not secret:
         return True
     hash_ = hmac.new(
-        LINE_CHANNEL_SECRET.encode("utf-8"),
+        secret.encode("utf-8"),
         body,
         hashlib.sha256,
     ).digest()
@@ -77,11 +80,12 @@ async def _send_to_line(
     reply_token: str, messages: List[Dict], client: httpx.AsyncClient
 ):
     """異步發送訊息封裝"""
+    token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
     try:
         res = await client.post(
             REPLY_URL,
             headers={
-                "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
+                "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
             },
             json={"replyToken": reply_token, "messages": messages},
@@ -105,7 +109,6 @@ def _get_quick_reply_items(cache: Dict[str, Any]) -> List[Dict]:
             "action": {"type": "message", "label": "📊 總覽", "text": "狀態"},
         }
     )
-    # 動態產生目前有的設備按鈕
     for device_id in list(cache.keys())[:10]:
         short_id = device_id.replace("KSON_", "")
         items.append(
@@ -242,7 +245,6 @@ def _dispatch_command(text: str, cache: Dict[str, Any]) -> List[Dict]:
     cmd = text.strip().lower()
     now_str = datetime.now().strftime("%H:%M:%S")
 
-    # 1. 查詢所有設備 (回傳純文字 + Quick Replies)
     if cmd in ("狀態", "status", "s"):
         lines = [f"📊 DQALab 設備概覽 ({now_str})", "━━━━━━━━━━━━━━"]
         if not cache:
@@ -262,7 +264,6 @@ def _dispatch_command(text: str, cache: Dict[str, Any]) -> List[Dict]:
             }
         ]
 
-    # 2. 查詢單一設備 (回傳 Flex Card + Quick Replies)
     for device_id, item in cache.items():
         short_id = device_id.replace("KSON_", "").lower()
         if cmd in (device_id.lower(), short_id):
@@ -270,7 +271,6 @@ def _dispatch_command(text: str, cache: Dict[str, Any]) -> List[Dict]:
             card["quickReply"] = {"items": _get_quick_reply_items(cache)}
             return [card]
 
-    # 3. 幫助 (純文字)
     if cmd in ("help", "?", "幫助", "h"):
         return [
             {
@@ -297,7 +297,6 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
     body = await request.body()
     signature = request.headers.get("X-Line-Signature", "")
 
-    # 簽名驗證
     if not _verify_signature(body, signature):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
@@ -305,12 +304,14 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
     cache = getattr(request.app.state, "AICM_CACHE", {})
     client = getattr(request.app.state, "http_client", httpx.AsyncClient())
 
+    line_user_id = os.getenv("LINE_USER_ID", "")
+
     for event in data.get("events", []):
         if event.get("type") != "message" or event["message"].get("type") != "text":
             continue
 
         sender_id = event.get("source", {}).get("userId", "")
-        if LINE_USER_ID and sender_id != LINE_USER_ID:
+        if line_user_id and sender_id != line_user_id:
             continue
 
         reply_token = event.get("replyToken")
