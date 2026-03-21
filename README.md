@@ -23,8 +23,18 @@
 ---
 
 ### Demo
-> 🎬 Demo 影片錄製中，敬請期待
----
+
+**儀表板 — 多設備即時監控**
+![Dashboard](./docs/dashboard.gif)
+
+**SOP 執行 — 法規選擇**
+![SOP](./docs/sop.gif)
+
+**AI 法規諮詢 — 串流回答**
+![AI](./docs/ai.gif)
+
+**異常紀錄**
+![ErrorLog](./docs/errorlog.gif)
 
 ## 快速啟動（本地開發）
 
