@@ -23,7 +23,7 @@
 ---
 
 ### 動作演示
-
+![DQA Lab Digital Twin 演示](./docs/demo.gif)
 
 ---
 

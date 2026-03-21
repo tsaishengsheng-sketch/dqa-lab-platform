@@ -104,6 +104,5 @@ dmypy.json
 *.iml
 
 ### 錄製與演示檔（可選，若要上傳 GIF/影片請删除相關行）
-# *.gif
 # *.mp4
 # docs/demos/
