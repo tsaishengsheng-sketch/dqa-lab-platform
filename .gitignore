@@ -105,3 +105,6 @@ dmypy.json
 
 #demo
 *.mov
+
+#changlog
+.git_log.txt
