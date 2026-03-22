@@ -43,7 +43,7 @@
 - **標準化報告**：執行完成自動儲存紀錄，支援 ISO 17025 相容格式下載
 
 ### 🤖 AI 法規諮詢助手
-支援自然語言查詢，透過 RAG（檢索增強生成）精準檢索法規內容。用戶可以詢問「EN 50155 和 IEC 60068 的濕熱循環有什麼差異？」，系統會檢索相關條文、對比參數、並用推論說明。多輪對話歷史完全本機儲存，無雲端上傳。
+支援自然語言查詢，透過 RAG（檢索增強生成）精準檢索法規內容。用戶可以詢問「EN 50155 和 IEC 60068 的濕熱循環有什麼差異？」，系統委託 Gemini API 進行推理與對比。對話歷史在本機完全持久化（localStorage + 資料庫），支援多輪長上下文推理，無本地上傳痕跡。
 
 ### 🚨 異常與通知系統
 緊急停止和測試完成時自動推播至 LINE，包含設備名稱、當前進度、完成時間。異常紀錄包含步驟進度與時間戳，支援事後原因分析。實作 EMERGENCY 狀態防重複觸發機制。
@@ -116,9 +116,10 @@ AI 法規諮詢的核心——精準的知識檢索：
 
 | 元件 | 頻率 | 優化策略 |
 |------|------|---------|
-| Dashboard 狀態 | 10s | 隱藏時暫停，避免背景耗電 |
-| ErrorLog 刷新 | 60s | 異常日誌更新頻率低，減輕 DB 壓力 |
-| SOPPage 實時更新 | 3s | 使用者在操作時需快速反饋 |
+| Dashboard 設備狀態 | 10s | 隱藏時暫停，避免背景耗電 |
+| Dashboard 執行紀錄 | 60s | 隱藏時暫停，減輕 DB 壓力 |
+| SOPPage 設備狀態 | 3s | 使用者在操作時需快速反饋 |
+| ErrorLog | 60s | 異常日誌更新頻率低 |
 
 ### 🔐 安全與存取控制設計
 
@@ -262,26 +263,86 @@ A: 確認 `backend/.env` 中的 `ALLOWED_ORIGINS` 設定是否正確
 dqa-lab-digital-twin/
 ├── backend/
 │   ├── app/
-│   │   ├── standards/        # 國際標準測試條件庫（模組化）
+│   │   ├── standards/        # 國際標準測試條件庫
+│   │   │   ├── __init__.py
+│   │   │   ├── _base.py
+│   │   │   ├── dnv.py
+│   │   │   ├── en50155.py
+│   │   │   ├── iec60068.py
+│   │   │   ├── iec60945.py
+│   │   │   └── iec61850.py
 │   │   ├── models.py         # SQLAlchemy ORM 定義
+│   │   ├── main.py           # FastAPI 路由 & 應用進入點
 │   │   ├── sop.py            # SOP 執行邏輯
-│   │   ├── ai.py             # RAG + Gemini API 整合
-│   │   ├── line_bot.py       # LINE 推播通知
-│   │   └── main.py           # FastAPI 路由
+│   │   ├── ai.py             # Gemini 推理整合
+│   │   ├── rag.py            # RAG 向量檢索 & 智能標準推薦
+│   │   ├── auth.py           # 存取控制（密碼驗證、Rate Limiting、Session）
+│   │   ├── line.py           # LINE Messaging API 推播（Flex Message 支援）
+│   │   ├── reports.py        # ISO 17025 相容 CSV 報告生成
+│   │   ├── serial_reader.py  # RS-485 串列通訊（Phase 3 準備）
+│   │   ├── errors.py         # 自訂例外類別定義
+│   │   └── utils.py          # 工具函式（時間計算、日期格式化等）
 │   ├── alembic/              # 資料庫遷移管理
-│   ├── init_db.py            # 初始化腳本
-│   └── .env.example
+│   │   ├── versions/         # 遷移指令碼
+│   │   ├── env.py
+│   │   ├── script.py.mako
+│   │   └── README
+│   ├── alembic.ini           # Alembic 配置
+│   ├── init_db.py            # 資料庫初始化腳本
+│   ├── rag_cache.pkl         # RAG 向量化快取（本地儲存）
+│   ├── requirements.txt       # Python 套件依賴
+│   └── .env.example          # 環境變數範本
 ├── client/                   # React 前端應用
 │   ├── src/
-│   │   ├── components/       # React 元件庫（10+個 SOP 元件）
-│   │   ├── api.js            # Axios 設定 + 認證攔截器
+│   │   ├── ai/               # AI 諮詢元件（獨立資料夾）
+│   │   │   ├── ChatArea.jsx
+│   │   │   ├── ChatSidebar.jsx
+│   │   │   ├── MessageBubble.jsx
+│   │   │   ├── useAIChat.jsx
+│   │   │   └── aiStorage.jsx # localStorage 操作（純函式）
+│   │   ├── components/
+│   │   │   └── sop/          # SOP 執行元件（10 個子元件）
+│   │   │       ├── ConditionCard.jsx
+│   │   │       ├── ControlPanel.jsx
+│   │   │       ├── ExecutionInfoPanel.jsx
+│   │   │       ├── ExecutionPanel.jsx
+│   │   │       ├── generateSP.js
+│   │   │       ├── MonitorSide.jsx
+│   │   │       ├── SafetyChecklist.jsx
+│   │   │       ├── SelectGroup.jsx
+│   │   │       ├── StepList.jsx
+│   │   │       └── TempChart.jsx
+│   │   ├── assets/
+│   │   ├── AIPage.jsx
+│   │   ├── api.js            # Axios 實例 + 認證攔截器（401 自動登出）
 │   │   ├── App.jsx           # 路由 & Session 管理
-│   │   └── main.jsx
-│   └── vite.config.js
+│   │   ├── Dashboard.jsx
+│   │   ├── ErrorLog.jsx
+│   │   ├── SOPPage.jsx
+│   │   ├── main.jsx
+│   │   ├── App.css
+│   │   ├── SOPPage.css
+│   │   └── index.css
+│   ├── index.html
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── vite.config.js
+│   ├── eslint.config.js
+│   └── vercel.json           # Vercel 部署配置
 ├── simulator/                # 溫箱物理模擬引擎
+│   ├── main.py              # 模擬器主程式（狀態機、波形計算、時間戳管理）
+│   └── requirements.txt      # 模擬器環境依賴
+├── docs/                     # 文檔與演示檔案
+│   ├── templates/
+│   │   └── QA_Test_Report_Template.docx
+│   ├── ai.gif、dashboard.gif、errorlog.gif、sop.gif  # 功能演示（壓縮）
+│   └── ai.mov、dashboard.mov、errorlog.mov、sop.mov、demo.mov  # 原始錄製檔
+├── AGENTS.md                 # AI 協作工具上下文（開發規範、技術規格）
+├── dev_start.sh              # 快速啟動指令碼
 ├── Makefile                  # 便利指令
-├── requirements.txt          # Python 套件依賴
-├── package.json              # Node 套件依賴
+├── requirements.txt          # Python 套件依賴（彙總）
+├── package.json              # Node 套件依賴（彙總）
+├── LICENSE                   # MIT License
 └── README.md
 ```
 
@@ -306,9 +367,9 @@ alembic upgrade head
 ### 前端元件開發
 
 前端元件組織如下：
-- `components/sop/` — SOP 執行相關元件（10 個子元件）
-- `components/ai/` — AI 諮詢相關元件
-- 其他 — Dashboard、ErrorLog、App 路由
+- `src/ai/` — AI 諮詢相關元件（獨立資料夾，包含 ChatArea.jsx、ChatSidebar.jsx、MessageBubble.jsx、useAIChat.jsx、aiStorage.jsx）
+- `src/components/sop/` — SOP 執行相關元件（10 個子元件）
+- 其他 — Dashboard、ErrorLog、AIPage、SOPPage、App 路由
 
 ### 常用指令
 
