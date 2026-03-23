@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { generateSP } from "./generateSP";
 
 function fmtMin(min) {
@@ -9,10 +9,17 @@ function fmtMin(min) {
 
 // 執行中資訊面板（左側欄，顯示 Pgm / Step / Free Time / Cycle / Now Time / End Time）
 const ExecutionInfoPanel = ({ sop, startedAt, simCycle, doneCnt }) => {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   if (!sop || !startedAt) return null;
 
   const startedAtDate = new Date(startedAt);
-  const now = new Date();
+
   const elapsedMin = Math.floor((now - startedAtDate) / 60000);
   const spData = generateSP(sop);
   const totalMin = spData.length > 0 ? spData[spData.length - 1].min : 0;

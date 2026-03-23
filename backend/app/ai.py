@@ -1,7 +1,7 @@
 import os
 import json
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -75,7 +75,10 @@ _TEST_TYPE_HINTS = {
 
 
 def _get_api_key() -> str:
-    return os.environ["GEMINI_API_KEY"]
+    key = os.getenv("GEMINI_API_KEY")
+    if not key:
+        raise HTTPException(status_code=503, detail="AI 服務未設定，請聯絡管理員")
+    return key
 
 
 class QueryRequest(BaseModel):
