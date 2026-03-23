@@ -17,16 +17,6 @@ execution_router = APIRouter(prefix="/api/sop-executions", tags=["sop-executions
 DEVICE_IDS = ["KSON_CH01", "KSON_CH02", "KSON_CH03", "KSON_CH04", "KSON_CH05"]
 
 
-# 呈現 SOP 列表用的資料類型
-class SopResponse(BaseModel):
-    sop_id: str
-    name: str
-    test_type: str
-    version: str
-    steps: List[dict]
-    description: Optional[str] = ""
-
-
 # 標準樹與 SOP 列表路由
 @router.get("/standards/tree")
 def get_standards_tree():
@@ -67,38 +57,7 @@ def get_standards_tree():
     return result
 
 
-@router.get("/", response_model=List[SopResponse])
-def list_sops():
-    """SOP 列表（從 STANDARD_TREE 自動展開 + 資料庫客製 SOP）"""
-    sops: List[SopResponse] = [
-        SopResponse(
-            sop_id=std_data.get("sop_id", sop_id),
-            name=std_data.get("name", ""),
-            test_type=std_data.get("test_type", "chamber"),
-            version=std_data.get("version", ""),
-            description=std_data.get("description", ""),
-            steps=std_data.get("steps", [])
-            if isinstance(std_data.get("steps"), list)
-            else [],
-        )
-        for sop_id, std_data in STANDARDS_AND_SOPS.items()
-    ]
-
-    with SessionLocal() as db:
-        existing_ids = {s.sop_id for s in sops}
-        for s in db.query(SopTemplate).all():
-            if s.sop_id not in existing_ids:
-                sops.append(
-                    SopResponse(
-                        sop_id=s.sop_id,
-                        name=s.name,
-                        test_type=s.test_type,
-                        version=s.version,
-                        steps=json.loads(s.steps_json) if s.steps_json else [],
-                    )
-                )
-
-    return sops
+# B5 fix: 移除 list_sops 廢棄端點，前端完全不呼叫
 
 
 # 啟動 SOP 路由
@@ -107,7 +66,7 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
     """啟動指定設備的 SOP 測試"""
     sop_id: str = payload.get("sop_id", "")
     device_id: str = payload.get("device_id", "KSON_CH01")
-    operator: str = payload.get("operator", "")  # 操作人員姓名
+    operator: str = payload.get("operator", "")
 
     if not sop_id:
         raise HTTPException(status_code=400, detail="sop_id 不能為空")
@@ -147,7 +106,7 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
             "completed_steps": 0,
             "started_at": now,
             "total_steps": len(std_data.get("steps", [])),
-            "operator": operator.strip() if operator else "",  # 存入 cache
+            "operator": operator.strip() if operator else "",
             "sim_phase": "idle",
             "sim_cycle": 0,
         }

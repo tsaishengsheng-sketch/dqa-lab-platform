@@ -131,8 +131,7 @@ const SOPPage = ({ active = true }) => {
   const [operator, setOperator] = useState(
     () => localStorage.getItem("dqa_operator") || "",
   );
-  // 自製 confirm modal 狀態
-  const [confirmModal, setConfirmModal] = useState(null); // { message, onConfirm }
+  const [confirmModal, setConfirmModal] = useState(null);
 
   const historyFetchingRef = useRef(null);
   const lastHistoryMinuteRef = useRef(-1);
@@ -174,9 +173,12 @@ const SOPPage = ({ active = true }) => {
     return () => clearInterval(t);
   }, [isEmergency]);
 
+  // S3 fix: 只有當 status 已符合 optimistic 值才清除，避免過早 reset
   useEffect(() => {
-    if (pauseOptimistic && data.status !== "OFFLINE") setPauseOptimistic(null);
-  }, [data.status, pauseOptimistic]);
+    if (pauseOptimistic && data.status === effectiveStatus) {
+      setPauseOptimistic(null);
+    }
+  }, [data.status, pauseOptimistic, effectiveStatus]);
 
   useEffect(() => {
     api
@@ -300,7 +302,6 @@ const SOPPage = ({ active = true }) => {
 
   const startSop = async (confirmedOperator) => {
     if (!testData || starting) return;
-    // 步驟檢查移到 API call 前，避免 finally 之後邏輯繼續跑
     const sopSteps = testData.steps || [];
     if (!sopSteps.length) {
       setStartError("⚠️ SOP 步驟資料不完整，請確認後端設定後重試。");
@@ -349,7 +350,6 @@ const SOPPage = ({ active = true }) => {
     }
   };
 
-  // 取消步驟改用自製 modal 取代 window.confirm
   const handleToggleStep = (stepId, stepIndex) => {
     const steps = ds.activeSop?.steps || [];
     const newCompleted = { ...ds.completedSteps };
@@ -383,7 +383,6 @@ const SOPPage = ({ active = true }) => {
 
   return (
     <div className="sop-page-layout">
-      {/* 自製 confirm modal */}
       {confirmModal && (
         <ConfirmModal
           message={confirmModal.message}
