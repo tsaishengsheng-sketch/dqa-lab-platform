@@ -7,8 +7,13 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const pwd = localStorage.getItem("demo_password") || "";
-  if (pwd) config.headers["X-Demo-Password"] = pwd;
+  const userToken = localStorage.getItem("user_token");
+  if (userToken) {
+    config.headers["X-User-Token"] = userToken;
+  } else {
+    const pwd = localStorage.getItem("demo_password") || "";
+    if (pwd) config.headers["X-Demo-Password"] = pwd;
+  }
   return config;
 });
 
@@ -18,6 +23,9 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem("demo_password");
       localStorage.removeItem("demo_login_at");
+      localStorage.removeItem("user_token");
+      localStorage.removeItem("user_role");
+      localStorage.removeItem("user_display_name");
       window.location.href = "/";
     }
     return Promise.reject(err);

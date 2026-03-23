@@ -28,6 +28,24 @@ class Base(DeclarativeBase):
     pass
 
 
+# ---------- 使用者（多用戶權限）----------
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    username: Mapped[str] = mapped_column(String, unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String)
+    hashed_password: Mapped[str] = mapped_column(String)
+    role: Mapped[str] = mapped_column(String, default="engineer")
+    # role: admin / keeper / engineer
+    line_user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    loan_limit: Mapped[int] = mapped_column(Integer, default=10)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+
 # ---------- SOP 模板 ----------
 class SopTemplate(Base):
     __tablename__ = "sop_templates"
@@ -129,7 +147,6 @@ class ErrorLog(Base):
     temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     humidity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # fix: 新增步驟進度欄位，緊急停止時記錄當下執行到幾步
     completed_steps: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     total_steps: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(

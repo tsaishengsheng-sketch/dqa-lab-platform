@@ -4,6 +4,7 @@ import SOPPage from "./SOPPage";
 import ErrorLog from "./ErrorLog";
 import AIPage from "./AIPage";
 import { API_BASE } from "./api";
+import api from "./api";
 
 const PAGES = [
   { key: "/", label: "儀表板" },
@@ -15,15 +16,32 @@ const PAGES = [
 const SESSION_DURATION = 8 * 60 * 60 * 1000;
 
 function isSessionValid() {
+  // 帳號登入：有 user_token 就算有效（後端 token 8 小時，前端不另外計時）
+  const userToken = localStorage.getItem("user_token");
+  if (userToken) return true;
+
+  // 訪客登入：demo 密碼 + 8 小時 session
   const pwd = localStorage.getItem("demo_password");
   const loginAt = parseInt(localStorage.getItem("demo_login_at") || "0");
   if (pwd && Date.now() - loginAt < SESSION_DURATION) return true;
-  localStorage.removeItem("demo_password");
-  localStorage.removeItem("demo_login_at");
+
+  clearSession();
   return false;
 }
 
-const NavBar = ({ current, onChange, onLogout }) => (
+function clearSession() {
+  localStorage.removeItem("demo_password");
+  localStorage.removeItem("demo_login_at");
+  localStorage.removeItem("user_token");
+  localStorage.removeItem("user_role");
+  localStorage.removeItem("user_display_name");
+}
+
+function getCurrentRole() {
+  return localStorage.getItem("user_role") || "guest";
+}
+
+const NavBar = ({ current, onChange, onLogout, role, displayName }) => (
   <nav
     style={{
       padding: "10px 24px",
@@ -68,32 +86,103 @@ const NavBar = ({ current, onChange, onLogout }) => (
         </button>
       );
     })}
-    <button
-      onClick={onLogout}
+    <div
       style={{
         marginLeft: "auto",
-        color: "#8b949e",
-        background: "transparent",
-        border: "1px solid #30363d",
-        fontWeight: 600,
-        fontSize: 12,
-        padding: "4px 12px",
-        borderRadius: 6,
-        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
       }}
     >
-      登出
-    </button>
+      {displayName && (
+        <span style={{ color: "#8b949e", fontSize: 12 }}>
+          {displayName}
+          <span
+            style={{
+              marginLeft: 6,
+              fontSize: 10,
+              padding: "1px 6px",
+              borderRadius: 3,
+              background:
+                role === "admin"
+                  ? "#1f3a1f"
+                  : role === "keeper"
+                    ? "#1f2f3a"
+                    : "#21262d",
+              color:
+                role === "admin"
+                  ? "#3fb950"
+                  : role === "keeper"
+                    ? "#58a6ff"
+                    : "#8b949e",
+            }}
+          >
+            {role === "admin"
+              ? "管理者"
+              : role === "keeper"
+                ? "保管人"
+                : role === "engineer"
+                  ? "工程師"
+                  : "訪客"}
+          </span>
+        </span>
+      )}
+      <button
+        onClick={onLogout}
+        style={{
+          color: "#8b949e",
+          background: "transparent",
+          border: "1px solid #30363d",
+          fontWeight: 600,
+          fontSize: 12,
+          padding: "4px 12px",
+          borderRadius: 6,
+          cursor: "pointer",
+        }}
+      >
+        登出
+      </button>
+    </div>
   </nav>
 );
 
 function LoginPage({ onLogin }) {
+  const [mode, setMode] = useState("user"); // "user" | "demo"
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [pwdInput, setPwdInput] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [backendOffline, setBackendOffline] = useState(false);
 
-  const handleLogin = async () => {
+  const handleUserLogin = async () => {
+    if (!username.trim() || !password.trim()) return;
+    setLoading(true);
+    setError("");
+    setBackendOffline(false);
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.detail || "登入失敗");
+      } else {
+        localStorage.setItem("user_token", data.token);
+        localStorage.setItem("user_role", data.role);
+        localStorage.setItem("user_display_name", data.display_name);
+        onLogin();
+      }
+    } catch {
+      setBackendOffline(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDemoLogin = async () => {
     if (!pwdInput.trim()) return;
     setLoading(true);
     setError("");
@@ -108,6 +197,7 @@ function LoginPage({ onLogin }) {
       } else {
         localStorage.setItem("demo_password", pwdInput);
         localStorage.setItem("demo_login_at", Date.now().toString());
+        localStorage.setItem("user_role", "guest");
         onLogin();
       }
     } catch {
@@ -230,56 +320,163 @@ function LoginPage({ onLogin }) {
             </button>
           </div>
         ) : (
-          <div
-            style={{
-              width: "100%",
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-              marginTop: 8,
-            }}
-          >
-            <input
-              type="password"
-              placeholder="請輸入存取密碼"
-              value={pwdInput}
-              onChange={(e) => setPwdInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 6,
-                border: "1px solid #30363d",
-                background: "#0d1117",
-                color: "#cdd9e5",
-                fontSize: 14,
-                width: "100%",
-                boxSizing: "border-box",
-                outline: "none",
-              }}
-            />
-            <button
-              onClick={handleLogin}
-              disabled={loading}
-              style={{
-                padding: "10px",
-                borderRadius: 6,
-                background: loading ? "#21262d" : "#238636",
-                color: loading ? "#484f58" : "#fff",
-                border: "none",
-                cursor: loading ? "not-allowed" : "pointer",
-                fontWeight: 700,
-                fontSize: 14,
-              }}
-            >
-              {loading ? "驗證中..." : "進入系統"}
-            </button>
+          <>
+            <div style={{ display: "flex", gap: 6, width: "100%" }}>
+              <button
+                onClick={() => {
+                  setMode("user");
+                  setError("");
+                }}
+                style={{
+                  flex: 1,
+                  fontSize: 12,
+                  padding: "5px",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  background: mode === "user" ? "#21262d" : "transparent",
+                  color: mode === "user" ? "#cdd9e5" : "#8b949e",
+                  border: `1px solid ${mode === "user" ? "#30363d" : "transparent"}`,
+                  fontWeight: mode === "user" ? 600 : 400,
+                }}
+              >
+                帳號登入
+              </button>
+              <button
+                onClick={() => {
+                  setMode("demo");
+                  setError("");
+                }}
+                style={{
+                  flex: 1,
+                  fontSize: 12,
+                  padding: "5px",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  background: mode === "demo" ? "#21262d" : "transparent",
+                  color: mode === "demo" ? "#cdd9e5" : "#8b949e",
+                  border: `1px solid ${mode === "demo" ? "#30363d" : "transparent"}`,
+                  fontWeight: mode === "demo" ? 600 : 400,
+                }}
+              >
+                訪客模式
+              </button>
+            </div>
+
+            {mode === "user" ? (
+              <div
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <input
+                  type="text"
+                  placeholder="帳號"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleUserLogin()}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 6,
+                    border: "1px solid #30363d",
+                    background: "#0d1117",
+                    color: "#cdd9e5",
+                    fontSize: 14,
+                    width: "100%",
+                    boxSizing: "border-box",
+                    outline: "none",
+                  }}
+                />
+                <input
+                  type="password"
+                  placeholder="密碼"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleUserLogin()}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 6,
+                    border: "1px solid #30363d",
+                    background: "#0d1117",
+                    color: "#cdd9e5",
+                    fontSize: 14,
+                    width: "100%",
+                    boxSizing: "border-box",
+                    outline: "none",
+                  }}
+                />
+                <button
+                  onClick={handleUserLogin}
+                  disabled={loading}
+                  style={{
+                    padding: "10px",
+                    borderRadius: 6,
+                    background: loading ? "#21262d" : "#238636",
+                    color: loading ? "#484f58" : "#fff",
+                    border: "none",
+                    cursor: loading ? "not-allowed" : "pointer",
+                    fontWeight: 700,
+                    fontSize: 14,
+                  }}
+                >
+                  {loading ? "驗證中..." : "登入"}
+                </button>
+              </div>
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <input
+                  type="password"
+                  placeholder="請輸入存取密碼"
+                  value={pwdInput}
+                  onChange={(e) => setPwdInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleDemoLogin()}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 6,
+                    border: "1px solid #30363d",
+                    background: "#0d1117",
+                    color: "#cdd9e5",
+                    fontSize: 14,
+                    width: "100%",
+                    boxSizing: "border-box",
+                    outline: "none",
+                  }}
+                />
+                <button
+                  onClick={handleDemoLogin}
+                  disabled={loading}
+                  style={{
+                    padding: "10px",
+                    borderRadius: 6,
+                    background: loading ? "#21262d" : "#238636",
+                    color: loading ? "#484f58" : "#fff",
+                    border: "none",
+                    cursor: loading ? "not-allowed" : "pointer",
+                    fontWeight: 700,
+                    fontSize: 14,
+                  }}
+                >
+                  {loading ? "驗證中..." : "進入系統"}
+                </button>
+                <span style={{ color: "#484f58", fontSize: 11 }}>
+                  Session 有效期限：8 小時
+                </span>
+              </div>
+            )}
+
             {error && (
               <span style={{ color: "#f85149", fontSize: 13 }}>{error}</span>
             )}
-            <span style={{ color: "#484f58", fontSize: 11 }}>
-              Session 有效期限：8 小時
-            </span>
-          </div>
+          </>
         )}
       </div>
     </div>
@@ -290,9 +487,17 @@ function App() {
   const [authed, setAuthed] = useState(() => isSessionValid());
   const [page, setPage] = useState("/");
 
-  const handleLogout = () => {
-    localStorage.removeItem("demo_password");
-    localStorage.removeItem("demo_login_at");
+  const role = getCurrentRole();
+  const displayName = localStorage.getItem("user_display_name") || "";
+
+  const handleLogout = async () => {
+    const token = localStorage.getItem("user_token");
+    if (token) {
+      try {
+        await api.post("/api/auth/logout");
+      } catch (_) {}
+    }
+    clearSession();
     setAuthed(false);
   };
 
@@ -307,7 +512,13 @@ function App() {
         backgroundColor: "#0d1117",
       }}
     >
-      <NavBar current={page} onChange={setPage} onLogout={handleLogout} />
+      <NavBar
+        current={page}
+        onChange={setPage}
+        onLogout={handleLogout}
+        role={role}
+        displayName={displayName}
+      />
       <main
         style={{
           width: "100%",
