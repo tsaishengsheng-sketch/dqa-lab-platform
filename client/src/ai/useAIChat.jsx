@@ -33,6 +33,8 @@ export default function useAIChat() {
   const startTimeRef = useRef(null);
   const userScrolledUpRef = useRef(false);
   const activeIdRef = useRef(null);
+  // A8: debounce timer ref
+  const saveDebounceRef = useRef(null);
 
   const activeId = store.activeConversationId;
   const conversations = store.conversations;
@@ -46,8 +48,16 @@ export default function useAIChat() {
   useEffect(() => {
     activeIdRef.current = activeId;
   }, [activeId]);
+
+  // A8 fix: saveChats 加 debounce 500ms，避免每次 store 更新都寫 localStorage
   useEffect(() => {
-    saveChats(store);
+    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    saveDebounceRef.current = setTimeout(() => {
+      saveChats(store);
+    }, 500);
+    return () => {
+      if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    };
   }, [store]);
 
   useEffect(() => {
@@ -176,6 +186,7 @@ export default function useAIChat() {
       Math.min(Math.max(el.scrollHeight, lh * 3), lh * 8) + "px";
   }, []);
 
+  // A5 fix: stopStream 移除 focus()，統一由 finally 處理
   const stopStream = useCallback(() => {
     abortControllerRef.current?.abort();
     const text = streamTextRef.current;
@@ -206,7 +217,7 @@ export default function useAIChat() {
     streamTextRef.current = "";
     setLoading(false);
     abortControllerRef.current = null;
-    inputRef.current?.focus();
+    // 移除 inputRef.current?.focus()，統一由 finally 處理
   }, []);
 
   const sendMessage = useCallback(
@@ -285,6 +296,7 @@ export default function useAIChat() {
           setStreamText("");
           streamTextRef.current = "";
           abortControllerRef.current = null;
+          // A5 fix: 統一在 finally 處理 focus
           inputRef.current?.focus();
         }
       }

@@ -98,7 +98,6 @@ app.include_router(errors_router)
 app.include_router(ai_router)
 app.include_router(line_router)
 
-# CORS：從環境變數讀取，預設只允許本地開發；Railway 部署時設定 ALLOWED_ORIGINS
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
 allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
@@ -403,7 +402,7 @@ async def normal_stop(device_id: str):
 
 async def data_simulator():
     write_counters: dict = {}
-    dwell_start_times: dict = {}  # 改用真實時間戳取代計數器，避免 sleep 漂移
+    dwell_start_times: dict = {}
 
     while True:
         cache = app.state.AICM_CACHE
@@ -411,6 +410,12 @@ async def data_simulator():
 
         for device_id, item in cache.items():
             status = item.get("status", "OFFLINE")
+
+            # B8 fix: IDLE 設備跳過，不做無謂迭代
+            if status == "IDLE":
+                write_counters[device_id] = 0
+                continue
+
             current_temp = item.get("temperature", 25.0)
             current_humi = item.get("humidity", 55.0)
 
