@@ -22,6 +22,7 @@ from .line import router as line_router, push_message
 from .models import SessionLocal, DeviceData, ErrorLog, DeviceState
 from .standards import get_ramp_rate, get_standard
 from .utils import _now_utc, _save_device_state
+import httpx as _httpx
 
 background_tasks = set()
 
@@ -83,7 +84,9 @@ async def lifespan(app: FastAPI):
     task = asyncio.create_task(warmup_rag())
     background_tasks.add(task)
     task.add_done_callback(background_tasks.discard)
+    app.state.http_client = _httpx.AsyncClient(timeout=10.0)
     yield
+    await app.state.http_client.aclose()
 
 
 app = FastAPI(title="KSON AICM Digital Twin Server", lifespan=lifespan)

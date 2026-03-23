@@ -290,7 +290,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
 
     data = await request.json()
     cache = getattr(request.app.state, "AICM_CACHE", {})
-    client = getattr(request.app.state, "http_client", httpx.AsyncClient())
+    client = request.app.state.http_client
 
     line_user_id = os.getenv("LINE_USER_ID", "")
 

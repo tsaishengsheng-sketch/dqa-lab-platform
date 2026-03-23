@@ -247,6 +247,8 @@ def list_executions():
             {
                 "id": e.id,
                 "sop_id": e.sop_id,
+                "sop_name": STANDARDS_AND_SOPS.get(e.sop_id, {}).get("name")
+                or e.sop_id,
                 "device_id": e.device_id,
                 "operator": e.operator,
                 "test_started_at": _fmt_dt(e.test_started_at),

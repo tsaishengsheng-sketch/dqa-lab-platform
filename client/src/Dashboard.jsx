@@ -305,6 +305,16 @@ const downloadCsv = async (execId, sopId) => {
   }
 };
 
+const fmtDatetime = (str) => {
+  if (!str || str === "N/A") return "—";
+  try {
+    const d = new Date(str);
+    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  } catch {
+    return str;
+  }
+};
+
 const Dashboard = ({ active = true }) => {
   const [devices, setDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState("KSON_CH01");
@@ -439,14 +449,27 @@ const Dashboard = ({ active = true }) => {
           marginBottom: 24,
         }}
       >
-        {devices.map((device) => (
-          <DeviceCard
-            key={device.device_id}
-            device={device}
-            selected={device.device_id === selectedDevice}
-            onClick={() => setSelectedDevice(device.device_id)}
-          />
-        ))}
+        {devices.length === 0
+          ? Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  ...card,
+                  borderLeft: "3px solid #30363d",
+                  height: 180,
+                  background:
+                    "linear-gradient(90deg, #161b22 25%, #1c2128 50%, #161b22 75%)",
+                }}
+              />
+            ))
+          : devices.map((device) => (
+              <DeviceCard
+                key={device.device_id}
+                device={device}
+                selected={device.device_id === selectedDevice}
+                onClick={() => setSelectedDevice(device.device_id)}
+              />
+            ))}
       </div>
 
       <div style={{ ...card, marginBottom: 24 }}>
@@ -673,7 +696,7 @@ const Dashboard = ({ active = true }) => {
                     {ex.operator || "—"}
                   </td>
                   <td style={{ padding: "8px 12px", color: "#8b949e" }}>
-                    {ex.test_started_at || ex.created_at}
+                    {fmtDatetime(ex.test_started_at || ex.created_at)}
                   </td>
                   <td style={{ padding: "8px 12px" }}>
                     {/* 修改：改用 axios blob 下載，帶 auth header */}
