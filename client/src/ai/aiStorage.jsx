@@ -109,15 +109,9 @@ export const loadChats = () => {
     }
   });
 
-  const usedGroups = new Set(
-    Object.values(store.conversations ?? {}).map((c) => c.projectGroup),
-  );
-  store.projectGroups = [
-    ...new Set([
-      ...store.projectGroups.filter((g) => g !== "未分組" && usedGroups.has(g)),
-      "未分組",
-    ]),
-  ];
+  if (!store.projectGroups.includes("未分組")) {
+    store.projectGroups.push("未分組");
+  }
 
   if (Object.keys(store.conversations).length === 0) {
     const conv = createConversation();

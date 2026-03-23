@@ -38,6 +38,10 @@ export default function useAIChat() {
   const conversations = store.conversations;
   const projectGroups = store.projectGroups;
   const messages = conversations[activeId]?.messages ?? [];
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     activeIdRef.current = activeId;
@@ -207,13 +211,17 @@ export default function useAIChat() {
 
   const sendMessage = useCallback(
     async (text) => {
+      const currentMessages = messagesRef.current;
       const rawMsg = (text !== undefined ? text : input).trim();
       if (!rawMsg || loading) return;
 
       setInput("");
       if (textareaRef.current) textareaRef.current.style.height = "auto";
 
-      const newMessages = [...messages, { role: "user", content: rawMsg }];
+      const newMessages = [
+        ...currentMessages,
+        { role: "user", content: rawMsg },
+      ];
       updateMessages(newMessages);
       scrollToBottomForce();
       setLoading(true);
@@ -281,7 +289,7 @@ export default function useAIChat() {
         }
       }
     },
-    [messages, input, loading, updateMessages, scrollToBottomForce],
+    [input, loading, updateMessages, scrollToBottomForce],
   );
 
   const retryInTraditional = useCallback(

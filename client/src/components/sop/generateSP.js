@@ -31,6 +31,7 @@ export function generateSP(sop) {
   let t = 0;
 
   const pushRamp = (from, to) => {
+    if (from === to) return; // ← 加這行
     const steps = Math.max(1, Math.round(Math.abs(to - from) / ramp));
     for (let i = 1; i <= steps; i++) {
       pts.push({ min: t, sp_temp: from + (to - from) * (i / steps) });
@@ -81,10 +82,16 @@ export function mergeSpPv(spData, pvData) {
   spData.forEach((p) => {
     map[p.min] = { ...p };
   });
+  const spMins = spData.map((p) => p.min);
   pvData.forEach((p) => {
-    if (p.min != null && map[p.min]) {
-      map[p.min].pv_temp = p.temperature;
-      map[p.min].pv_humi = p.humidity;
+    if (p.min == null) return;
+    // 找最近的 SP 時間點，容差 ±2 分鐘
+    const nearest = spMins.reduce((a, b) =>
+      Math.abs(b - p.min) < Math.abs(a - p.min) ? b : a,
+    );
+    if (Math.abs(nearest - p.min) <= 2) {
+      map[nearest].pv_temp = p.temperature;
+      map[nearest].pv_humi = p.humidity;
     }
   });
   return Object.values(map).sort((a, b) => a.min - b.min);
