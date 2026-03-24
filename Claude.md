@@ -89,31 +89,26 @@ API 文件：http://localhost:8000/docs
 [後續] 排程系統（甘特圖 + 自動時長計算）
 ```
 
-### [1] LINE Bot 治具通知 — 剩餘工項
+### [1] LINE Bot 治具通知 — 工項清單（全部完成）
 
 ```
 後端：✅ 全部完成
   [1a] fixture_notifications.py（借出即時通知 + 每日 08:00 掃描 + 月盤點提醒）✅
   [1b] main.py lifespan 加入 APScheduler（每日08:00 + 每月1日08:00）✅
   [1c] fixtures.py POST /loans 觸發即時通知（asyncio.create_task）✅
-前端（下次繼續）：
+前端：✅ 全部完成
   [1d] LoanModal 借用人改下拉選單（GET /api/fixtures/users）✅
-  [1e] 治具總表新增「設定保管人」按鈕（SetKeeperModal 元件已建，需接觸發邏輯）❌
-  [1f] 月盤點「實際數量」可編輯欄位（POST /api/fixtures/{id}/inventory）❌
+  [1e] 治具總表「設定保管人」按鈕（SetKeeperModal）✅
+  [1f] 月盤點「實際數量」inline 編輯（POST /api/fixtures/{id}/inventory）✅
 ```
 
 ---
 
 ### [1] LINE Bot 治具通知（P1）
 
-**狀態：🔄 進行中（後端完成，前端剩 [1e][1f]）**
+**狀態：✅ 全部完成**
 
-#### 後端實作重點
-
-- `POST /api/fixtures/loans` 成功後 → 立即推播借用人（`users.line_user_id`）
-- FastAPI lifespan 加入 APScheduler，每日 08:00 執行掃描任務
-
-#### APScheduler 掃描邏輯
+#### APScheduler 掃描邏輯（已上線）
 
 ```
 逾期 >= 1 天  → 推播借用人
@@ -124,51 +119,30 @@ API 文件：http://localhost:8000/docs
 月盤點提醒    → 每月 1 日推播保管人
 ```
 
-#### 注意事項
-
-- `users` 表已有 `line_user_id` 欄位，直接用
-- 共用 `line.py` 現有的 `AsyncClient`，不另起 HTTP client
-- 推播失敗不應阻斷主流程，用 try/except + log 處理
-
 ---
 
 ### [2] 月盤點 UI（P2）
 
-**狀態：❌ 未開始（後端 `/inventory` API 已完成）**
+**狀態：✅ 完成**
 
-#### 前端實作重點
-
-- 治具總表新增「實際數量」欄位（keeper/admin 可 inline 編輯，engineer 唯讀）
-- 回填後自動比對：`實際數量 < 系統數量` → 差異欄標紅 + 顯示「最後借出者」
-- 送出：`POST /api/fixtures/{id}/inventory`，完成後重新 fetchAll
+- 治具總表「實際數量」欄：keeper/admin inline 編輯，Enter 或按「確認」送出
+- 實際數量 < 系統數量 → 輸入框標紅
+- POST /api/fixtures/{id}/inventory → 完成後 fetchAll
 
 ---
 
-### [3] Auth 升級完整版（P1）
+### [3] Auth 升級（P1）
 
-**狀態：❌ 未開始（現行用 localStorage role，無後端驗證）**
+**狀態：🔄 部分完成（已完成 /api/auth/me；JWT 完整替換尚未實作）**
 
-> ⚠️ 影響範圍最大，建議在治具模組收尾後再動，避免破壞性變更。
+已完成：
+- `GET /api/auth/me`：回傳 role / display_name / line_user_id，App 啟動時刷新，防 localStorage 竄改
+- token 持久化到 DB（重啟不失效，8h TTL）
+- 帳號密碼登入（`X-User-Token` header）、guest 模式（`X-Demo-Password`）雙軌並存
 
-#### 後端實作重點
-
-| 端點 | 說明 |
-|------|------|
-| `POST /api/auth/login` | 帳號 + 密碼 → 回傳 JWT |
-| `GET /api/auth/me` | 回傳當前使用者 role / name / line_user_id |
-| `POST /api/auth/users` | admin only，新增帳號 |
-| `PATCH /api/auth/users/{id}` | admin only，修改 role / 停用帳號 |
-
-- JWT middleware 取代現有的 `X-Demo-Password` header 驗證
-- guest 模式保留：demo 密碼換取一個 guest JWT（role=guest），不破壞現有展示功能
-- 推薦套件：`python-jose[cryptography]` + `passlib[bcrypt]`
-
-#### 前端實作重點
-
-- 登入頁改為帳號 + 密碼兩欄（guest 入口保留）
-- token 存 localStorage，取代 `demo_password`
+尚未實作（後續）：
+- JWT 完整替換 `X-Demo-Password` 雙軌機制 → 改用單一 Bearer token
 - `api.js` interceptor 改帶 `Authorization: Bearer <token>`
-- admin 可進入「使用者管理」頁：新增帳號、設定 role、綁定 LINE User ID、停用帳號
 
 ---
 
@@ -401,8 +375,9 @@ src/
 | `error_logs` | 緊急停止事件，含 completed_steps、total_steps | device_id, created_at |
 | `fixtures` | 治具基本資料 | id, interface_type |
 | `fixture_loans` | 借出紀錄（fixture_id, borrower, device, project, 狀態）| id, fixture_id |
-| `users` | 工程師名單（帳號/密碼/LINE ID/權限）| id |
-| `purchase_orders` | 採購紀錄 | id |
+| `users` | 工程師名單（帳號/密碼/LINE ID/權限/token）| id |
+| `sop_templates` | 自訂 SOP 模板（自訂測試流程） | sop_id |
+| `purchase_orders` | 採購紀錄（治具採購流程） | id, fixture_id |
 
 ### 前端輪詢頻率（現有）
 
@@ -458,6 +433,10 @@ src/
 - 避免縮寫，保持一致性
 
 ### Alembic 注意事項
+
+**現行實務**：新表格由 `init_db()` → `Base.metadata.create_all()` 在啟動時自動建立，不需要 alembic migration。Alembic 僅用於**既有表格的欄位異動**（ALTER TABLE）。
+
+目前 `dqa_lab.db` 的所有表格（10 張）均已存在，無 pending migration。
 
 SQLite autogenerate 有時產生空的 `upgrade()`，需手動填入。若 `alembic upgrade head` 無動作：
 
