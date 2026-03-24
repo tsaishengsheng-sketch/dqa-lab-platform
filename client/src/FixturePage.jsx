@@ -766,6 +766,8 @@ export default function FixturePage({ active, role }) {
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [returnTarget, setReturnTarget] = useState(null);
+  const [keeperTarget, setKeeperTarget] = useState(null);
+  const [inventoryEdits, setInventoryEdits] = useState({});
   const [loading, setLoading] = useState(false);
   const canOperate = role === "admin" || role === "keeper";
 
@@ -793,6 +795,20 @@ export default function FixturePage({ active, role }) {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  const submitInventory = async (fixtureId) => {
+    const val = inventoryEdits[fixtureId];
+    if (val === undefined || val === "") return;
+    const num = parseInt(val);
+    if (isNaN(num) || num < 0) return;
+    try {
+      await api.post(`/api/fixtures/${fixtureId}/inventory?actual_quantity=${num}`);
+      setInventoryEdits((prev) => { const n = { ...prev }; delete n[fixtureId]; return n; });
+      fetchAll();
+    } catch (e) {
+      console.error("盤點回填失敗", e);
+    }
+  };
 
   const filtered = fixtures.filter((f) => {
     if (filterInterface && f.interface_type !== filterInterface) return false;
@@ -1022,18 +1038,17 @@ export default function FixturePage({ active, role }) {
                   <th style={thStyle}>狀態</th>
                   <th style={thStyle}>使用率</th>
                   <th style={thStyle}>汰換</th>
+                  <th style={thStyle}>保管人</th>
+                  <th style={thStyle}>實際數量</th>
+                  {canOperate && <th style={thStyle}>操作</th>}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={10}
-                      style={{
-                        ...tdStyle,
-                        textAlign: "center",
-                        color: "#8b949e",
-                      }}
+                      colSpan={canOperate ? 13 : 12}
+                      style={{ ...tdStyle, textAlign: "center", color: "#8b949e" }}
                     >
                       載入中...
                     </td>
@@ -1041,18 +1056,18 @@ export default function FixturePage({ active, role }) {
                 ) : filtered.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={10}
-                      style={{
-                        ...tdStyle,
-                        textAlign: "center",
-                        color: "#8b949e",
-                      }}
+                      colSpan={canOperate ? 13 : 12}
+                      style={{ ...tdStyle, textAlign: "center", color: "#8b949e" }}
                     >
                       無符合資料
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((f) => (
+                  filtered.map((f) => {
+                    const editVal = inventoryEdits[f.id];
+                    const isDiff = editVal !== undefined && editVal !== "" &&
+                      !isNaN(parseInt(editVal)) && parseInt(editVal) < f.total_quantity;
+                    return (
                     <tr
                       key={f.id}
                       style={{ transition: "background .1s" }}
@@ -1082,8 +1097,7 @@ export default function FixturePage({ active, role }) {
                       <td
                         style={{
                           ...tdStyle,
-                          color:
-                            f.available_quantity > 0 ? "#3fb950" : "#f85149",
+                          color: f.available_quantity > 0 ? "#3fb950" : "#f85149",
                           fontWeight: 600,
                         }}
                       >
@@ -1108,8 +1122,74 @@ export default function FixturePage({ active, role }) {
                       <td style={{ ...tdStyle, color: "#8b949e" }}>
                         {f.replacement_years || "—"}
                       </td>
+                      <td style={{ ...tdStyle, color: f.keeper_name ? "#58a6ff" : "#484f58" }}>
+                        {f.keeper_name || "未設定"}
+                      </td>
+                      <td style={tdStyle}>
+                        {canOperate ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <input
+                              type="number"
+                              min={0}
+                              value={editVal ?? ""}
+                              placeholder={String(f.total_quantity)}
+                              onChange={(e) =>
+                                setInventoryEdits((prev) => ({ ...prev, [f.id]: e.target.value }))
+                              }
+                              onKeyDown={(e) => e.key === "Enter" && submitInventory(f.id)}
+                              style={{
+                                width: 60,
+                                padding: "3px 6px",
+                                borderRadius: 4,
+                                border: `1px solid ${isDiff ? "#f85149" : "#30363d"}`,
+                                background: "#0d1117",
+                                color: isDiff ? "#f85149" : "#cdd9e5",
+                                fontSize: 12,
+                              }}
+                            />
+                            {editVal !== undefined && editVal !== "" && (
+                              <button
+                                onClick={() => submitInventory(f.id)}
+                                style={{
+                                  padding: "2px 6px",
+                                  borderRadius: 4,
+                                  border: "1px solid #238636",
+                                  background: "#238636",
+                                  color: "#fff",
+                                  fontSize: 11,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                確認
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: "#8b949e" }}>{f.total_quantity}</span>
+                        )}
+                      </td>
+                      {canOperate && (
+                        <td style={tdStyle}>
+                          <button
+                            onClick={() => setKeeperTarget(f)}
+                            style={{
+                              padding: "3px 10px",
+                              borderRadius: 4,
+                              border: "1px solid #30363d",
+                              background: "transparent",
+                              color: "#8b949e",
+                              fontSize: 11,
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            設定保管人
+                          </button>
+                        </td>
+                      )}
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1257,6 +1337,16 @@ export default function FixturePage({ active, role }) {
           onClose={() => setReturnTarget(null)}
           onSubmit={() => {
             setReturnTarget(null);
+            fetchAll();
+          }}
+        />
+      )}
+      {keeperTarget && (
+        <SetKeeperModal
+          fixture={keeperTarget}
+          onClose={() => setKeeperTarget(null)}
+          onSubmit={() => {
+            setKeeperTarget(null);
             fetchAll();
           }}
         />
