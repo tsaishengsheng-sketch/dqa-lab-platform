@@ -5,18 +5,18 @@ import threading
 import time
 
 
-# KSON AICM 工業級通訊協議模擬器類別
-class KsonChamberSimulator(threading.Thread):
-    """模擬 KSON AICM 協議，模擬數據發送至工業控制設備
+# 溫箱通訊協議模擬器類別
+class ChamberSimulator(threading.Thread):
+    """模擬溫箱通訊協議，模擬數據發送至後端伺服器
 
     Attributes:
-        name (str): 設備識別名稱（預設：KSON_CH01）
+        name (str): 設備識別名稱（預設：CH-01）
         port (str): 串口端口名稱（預設：/dev/ttys000）
         temp (float): 模擬溫度值（預設：25.0°C）
         humi (float): 模擬濕度值（預設：55%）
     """
 
-    def __init__(self, name="KSON_CH01", port="/dev/ttys000"):
+    def __init__(self, name="CH-01", port="/dev/ttys000"):
         super().__init__()
         self.daemon = True
         self.name = name  # 設備識別名稱

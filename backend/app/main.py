@@ -101,7 +101,7 @@ async def lifespan(app: FastAPI):
     await app.state.http_client.aclose()
 
 
-app = FastAPI(title="KSON AICM Digital Twin Server", lifespan=lifespan)
+app = FastAPI(title="DQA Lab Digital Twin", lifespan=lifespan)
 
 app.include_router(sop_router, prefix="/api/sop", tags=["sop"])
 app.include_router(execution_router)
@@ -294,7 +294,7 @@ async def get_device_history(device_id: str):
 @app.get("/api/latest")
 async def get_latest():
     cache = app.state.AICM_CACHE
-    if not cache or "KSON_CH01" not in cache:
+    if not cache or "CH-01" not in cache:
         return {
             "status": "OFFLINE",
             "temperature": 0.0,
@@ -303,7 +303,7 @@ async def get_latest():
             "description": "等待模擬器啟動...",
             "timestamp": _now_utc().strftime("%H:%M:%S"),
         }
-    data = cache["KSON_CH01"]
+    data = cache["CH-01"]
     status = data.get("status", "OFFLINE")
     return {
         "status": status,

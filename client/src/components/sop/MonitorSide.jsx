@@ -3,11 +3,11 @@ import TempChart from "./TempChart";
 import ExecutionInfoPanel from "./ExecutionInfoPanel";
 
 const DEVICE_IDS = [
-  "KSON_CH01",
-  "KSON_CH02",
-  "KSON_CH03",
-  "KSON_CH04",
-  "KSON_CH05",
+  "CH-01",
+  "CH-02",
+  "CH-03",
+  "CH-04",
+  "CH-05",
 ];
 
 const STATUS_CONFIG = {
@@ -36,7 +36,7 @@ const MonitorSide = ({
     <aside className="monitor-side">
       {/* Brand + status */}
       <div className="brand-box">
-        <h1 className="main-title">KSON AICM | Digital Twin</h1>
+        <h1 className="main-title">DQA Lab | Digital Twin</h1>
         <div className="status-row">
           <span className={`status-dot ${data.status.toLowerCase()}`} />
           <span
@@ -100,7 +100,7 @@ const MonitorSide = ({
                   transition: "all .15s",
                 }}
               >
-                {id.replace("KSON_", "")}
+                {id}
               </button>
             );
           })}

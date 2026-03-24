@@ -138,7 +138,7 @@ def _get_quick_reply_items(cache: Dict[str, Any]) -> List[Dict]:
         }
     )
     for device_id in list(cache.keys())[:10]:
-        short_id = device_id.replace("KSON_", "")
+        short_id = device_id
         items.append(
             {
                 "type": "action",
@@ -290,7 +290,7 @@ def _dispatch_command(text: str, cache: Dict[str, Any]) -> List[Dict]:
         ]
 
     for device_id, item in cache.items():
-        short_id = device_id.replace("KSON_", "").lower()
+        short_id = device_id.lower()
         if cmd in (device_id.lower(), short_id):
             card = _create_flex_detail_card(device_id, item)
             card["quickReply"] = {"items": _get_quick_reply_items(cache)}

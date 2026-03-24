@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Dashboard from "./Dashboard";
 import SOPPage from "./SOPPage";
 import ErrorLog from "./ErrorLog";
@@ -237,7 +237,7 @@ function LoginPage({ onLogin }) {
           DQA Lab
         </span>
         <span style={{ color: "#8b949e", fontSize: 13 }}>
-          KSON AICM Digital Twin
+          DQA Lab Digital Twin
         </span>
 
         {backendOffline ? (
@@ -485,9 +485,26 @@ function LoginPage({ onLogin }) {
 function App() {
   const [authed, setAuthed] = useState(() => isSessionValid());
   const [page, setPage] = useState("/");
+  const [role, setRole] = useState(getCurrentRole);
+  const [displayName, setDisplayName] = useState(
+    () => localStorage.getItem("user_display_name") || ""
+  );
 
-  const role = getCurrentRole();
-  const displayName = localStorage.getItem("user_display_name") || "";
+  // 有 token 時，從後端驗證並刷新 role（防止 localStorage 被竄改）
+  useEffect(() => {
+    if (!authed) return;
+    const token = localStorage.getItem("user_token");
+    if (!token) return;
+    api.get("/api/auth/me").then((res) => {
+      const { role: r, display_name: dn } = res.data;
+      localStorage.setItem("user_role", r);
+      localStorage.setItem("user_display_name", dn);
+      setRole(r);
+      setDisplayName(dn);
+    }).catch(() => {
+      // token 失效由 api.js interceptor 處理（自動登出）
+    });
+  }, [authed]);
 
   const handleLogout = async () => {
     const token = localStorage.getItem("user_token");

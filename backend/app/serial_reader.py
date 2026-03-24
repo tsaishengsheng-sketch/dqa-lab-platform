@@ -1,7 +1,7 @@
 # =============================================================
 # Phase 3 預留：真實 RS-485 串口通訊
 # 目前系統使用 simulator/main.py 模擬引擎，此檔案尚未啟用。
-# 對接真實 KSON 溫箱時，於 main.py startup 中初始化此 Reader。
+# 對接真實溫箱設備時，於 main.py startup 中初始化此 Reader。
 # =============================================================
 import asyncio
 import serial_asyncio
@@ -14,7 +14,7 @@ class AsyncSerialReader:
     AICM 異步串口解析引擎
     """
 
-    def __init__(self, port, baudrate=9600, device_id="KSON_CH01", cache_callback=None):
+    def __init__(self, port, baudrate=9600, device_id="CH-01", cache_callback=None):
         self.port = port
         self.baudrate = baudrate
         self.device_id = device_id

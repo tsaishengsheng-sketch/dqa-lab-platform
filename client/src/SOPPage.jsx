@@ -10,11 +10,11 @@ import SafetyChecklist from "./components/sop/SafetyChecklist";
 import "./SOPPage.css";
 
 const DEVICE_IDS = [
-  "KSON_CH01",
-  "KSON_CH02",
-  "KSON_CH03",
-  "KSON_CH04",
-  "KSON_CH05",
+  "CH-01",
+  "CH-02",
+  "CH-03",
+  "CH-04",
+  "CH-05",
 ];
 const ACTIVE_STATUSES = ["RUNNING", "PAUSED"];
 
@@ -117,7 +117,7 @@ const ConfirmModal = ({ message, onConfirm, onCancel }) => (
 );
 
 const SOPPage = ({ active = true }) => {
-  const [selectedDevice, setSelectedDevice] = useState("KSON_CH01");
+  const [selectedDevice, setSelectedDevice] = useState("CH-01");
   const [allDevices, setAllDevices] = useState({});
   const [deviceStates, setDeviceStates] = useState(() =>
     Object.fromEntries(DEVICE_IDS.map((id) => [id, initDeviceState()])),

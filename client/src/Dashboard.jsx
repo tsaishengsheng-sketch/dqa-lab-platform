@@ -21,11 +21,11 @@ const STATUS_CONFIG = {
 };
 
 const DEVICE_IDS = [
-  "KSON_CH01",
-  "KSON_CH02",
-  "KSON_CH03",
-  "KSON_CH04",
-  "KSON_CH05",
+  "CH-01",
+  "CH-02",
+  "CH-03",
+  "CH-04",
+  "CH-05",
 ];
 
 const card = {
@@ -317,7 +317,7 @@ const fmtDatetime = (str) => {
 
 const Dashboard = ({ active = true }) => {
   const [devices, setDevices] = useState([]);
-  const [selectedDevice, setSelectedDevice] = useState("KSON_CH01");
+  const [selectedDevice, setSelectedDevice] = useState("CH-01");
   const [historyMap, setHistoryMap] = useState(() =>
     Object.fromEntries(DEVICE_IDS.map((id) => [id, []])),
   );
@@ -432,7 +432,7 @@ const Dashboard = ({ active = true }) => {
         <h1
           style={{ color: "#58a6ff", margin: 0, fontSize: 22, fontWeight: 700 }}
         >
-          KSON AICM | Digital Twin
+          DQA Lab | Digital Twin
         </h1>
         <div style={{ display: "flex", gap: 10, fontSize: 12 }}>
           <span style={{ color: "#3fb950" }}>● 執行中 {runningCount}</span>
@@ -513,7 +513,7 @@ const Dashboard = ({ active = true }) => {
                     transition: "all .15s",
                   }}
                 >
-                  {id.replace("KSON_", "")}
+                  {id}
                 </button>
               );
             })}

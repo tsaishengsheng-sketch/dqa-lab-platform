@@ -428,11 +428,11 @@ function LoanModal({ onClose, onSubmit, fixtures }) {
         >
           <option value="">綁定設備（選填）</option>
           {[
-            "KSON_CH01",
-            "KSON_CH02",
-            "KSON_CH03",
-            "KSON_CH04",
-            "KSON_CH05",
+            "CH-01",
+            "CH-02",
+            "CH-03",
+            "CH-04",
+            "CH-05",
           ].map((d) => (
             <option key={d} value={d}>
               {d}

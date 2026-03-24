@@ -171,6 +171,26 @@ def logout(request: Request):
     return {"ok": True}
 
 
+@router.get("/api/auth/me")
+def get_me(request: Request):
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="未登入或訪客模式")
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="使用者不存在或已停用")
+        return {
+            "id": user.id,
+            "display_name": user.display_name,
+            "role": user.role,
+            "line_user_id": user.line_user_id,
+        }
+    finally:
+        db.close()
+
+
 # ---------- 使用者管理（admin only）----------
 
 def _require_admin(request: Request):

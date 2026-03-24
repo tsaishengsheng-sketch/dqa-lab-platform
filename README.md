@@ -6,7 +6,7 @@
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-基於 FastAPI + React 的實驗室數位孿生平台，整合物理模擬引擎與國際環境測試標準，實現溫箱設備的遠端自動化控制與 AI 法規諮詢。
+基於 FastAPI + React 的環境測試實驗室數位孿生平台，整合設備模擬引擎、SOP 執行管理、治具借還追蹤與 AI 法規諮詢，目標取代實驗室紙本作業流程。
 
 ---
 
@@ -18,6 +18,8 @@
 2. **設備狀態機 + 物理模擬引擎** — 支援離線驗證，無需實體硬體
 3. **AI 法規助手** — 用自然語言快速檢索與比較標準
 4. **完整追溯記錄** — ISO 17025 格式報告，保證可追溯性
+5. **治具借還管理** — 取代紙本紀錄，LINE Bot 即時通知
+6. **三層權限控管** — 管理者 / 保管人 / 工程師，後端 token 驗證
 
 ---
 
@@ -29,14 +31,20 @@
 ### 🔧 SOP 執行引擎
 三步驟選擇法規 → 版本 → 測試條件，自動載入參數。支援進度持久化、步驟鎖定、SP+PV 波形疊加、ISO 17025 報告下載。
 
+### 🗄️ 治具借還管理
+治具總表、借出登記、歸還確認（支援補填歸還日期）、逾期追蹤、月盤點回填、Excel 批次匯入。保管人中心制，LINE Bot 推播借用人確認。
+
 ### 🤖 AI 法規諮詢
 自然語言查詢「EN 50155 和 IEC 60068 的濕熱循環有什麼差異？」，系統透過 RAG 檢索法規內容、對比參數、推論說明。對話歷史本機儲存，支援多輪上下文。
 
 ### 🚨 異常與通知
-緊急停止和測試完成時自動推播 LINE，含設備名稱、進度、完成時間。詳細異常紀錄支援事後原因分析。
+緊急停止事件自動記錄、步驟進度快照。LINE Bot 推播逾期提醒、借出通知、月盤點提醒。
 
-### 🔐 多層存取控制
-前端密碼保護 + 8 小時 Session、後端 IP Rate Limiting（5 次失敗後 10 分鐘封鎖）、X-Demo-Password header 驗證、CORS 環境變數控制。
+### 👥 人員管理
+工程師名冊維護（新增 / 編輯 / 停用 / 刪除），綁定 LINE User ID 供推播使用。Admin only，工程師帳號無法登入系統，僅作為借用人選單來源。
+
+### 🔐 三層存取控制
+帳號登入（token 存 DB，重啟不失效）+ 訪客模式（Demo Password）。App 啟動時從後端 `/api/auth/me` 驗證真實 role，防止 localStorage 竄改。IP Rate Limiting：5 次錯誤封鎖 10 分鐘。
 
 ---
 
@@ -68,10 +76,10 @@
 啟動時批次向量化測試條件（20 條/批），快取至本地 pickle 檔案。根據查詢類型採用不同策略：明確指定標準直接檢索、跨標準比較並行檢索、測試類型查詢用向量相似度 + 篩選。未指定標準時自動從對話歷史推斷，無法推斷則預設 IEC 60068。
 
 ### 前端性能優化
-輪詢分級：Dashboard 狀態 10s、Dashboard 執行紀錄 60s、SOPPage 3s、ErrorLog 60s，隱藏時暫停避免背景耗電。
+輪詢分級：Dashboard 狀態 10s、Dashboard 執行紀錄 60s、SOPPage 3s、ErrorLog 60s，隱藏時暫停避免背景耗電。治具頁手動觸發，避免不必要輪詢。
 
 ### 多層安全設計
-前端 localStorage session + 8 小時自動踢出，後端 IP Rate Limiting + header 驗證，CORS 環境變數控制，401 錯誤時 axios interceptor 自動登出跳轉。
+Token 存 DB（重啟不失效、8 小時 TTL）、App 啟動時打 `/api/auth/me` 從後端刷新 role、IP Rate Limiting、401 時 axios interceptor 自動登出跳轉、CORS 環境變數控制。
 
 ---
 
@@ -117,7 +125,6 @@ GEMINI_API_KEY=your_key
 # LINE 推播（可選）
 LINE_CHANNEL_SECRET=your_secret
 LINE_CHANNEL_ACCESS_TOKEN=your_token
-LINE_USER_ID=your_id
 
 # 資料庫 & CORS
 DATABASE_URL=sqlite:///./dqa_lab.db
@@ -126,13 +133,13 @@ ALLOWED_ORIGINS=http://localhost:5173
 
 ### 常見問題
 
-**Q: Alembic 相關錯誤**  
+**Q: Alembic 相關錯誤**
 A: 執行 `python backend/init_db.py` 初始化資料庫
 
-**Q: LINE Bot 推播無反應**  
+**Q: LINE Bot 推播無反應**
 A: 重新開啟終端，重新執行 `make dev`（ngrok URL 會重新生成）
 
-**Q: 前端無法連線後端**  
+**Q: 前端無法連線後端**
 A: 確認 `backend/.env` 的 `ALLOWED_ORIGINS` 設定是否正確
 
 ---
@@ -143,35 +150,34 @@ A: 確認 `backend/.env` 的 `ALLOWED_ORIGINS` 設定是否正確
 dqa-lab-digital-twin/
 ├── backend/
 │   ├── app/
-│   │   ├── standards/        # 國際標準測試條件庫（模組化）
-│   │   ├── models.py         # SQLAlchemy ORM 定義
-│   │   ├── main.py           # FastAPI 路由 & 應用進入點
-│   │   ├── sop.py            # SOP 執行邏輯
-│   │   ├── ai.py             # Gemini 推理整合
-│   │   ├── rag.py            # RAG 向量檢索 & 智能標準推薦
-│   │   ├── auth.py           # 存取控制（密碼驗證、Rate Limiting、Session）
-│   │   ├── line.py           # LINE Messaging API 推播
-│   │   ├── reports.py        # ISO 17025 相容報告生成
-│   │   ├── serial_reader.py  # RS-485 串列通訊（Phase 3 準備）
-│   │   ├── errors.py         # 自訂例外類別
-│   │   └── utils.py          # 工具函式
-│   ├── alembic/              # 資料庫遷移管理
+│   │   ├── standards/              # 國際標準測試條件庫（模組化）
+│   │   ├── models.py               # SQLAlchemy ORM 定義
+│   │   ├── main.py                 # FastAPI 路由 & 應用進入點
+│   │   ├── sop.py                  # SOP 執行邏輯
+│   │   ├── ai.py                   # Gemini 推理整合
+│   │   ├── rag.py                  # RAG 向量檢索 & 智能標準推薦
+│   │   ├── auth.py                 # 帳號驗證、token 管理、使用者 CRUD
+│   │   ├── fixtures.py             # 治具管理 API
+│   │   ├── fixture_notifications.py # LINE Bot 推播排程
+│   │   ├── line.py                 # LINE Messaging API 推播
+│   │   ├── reports.py              # ISO 17025 相容報告生成
+│   │   └── serial_reader.py        # RS-485 串列通訊（Phase 3 準備）
+│   ├── alembic/                    # 資料庫遷移管理
 │   ├── init_db.py
-│   ├── rag_cache.pkl         # RAG 向量快取
 │   └── requirements.txt
 ├── client/
 │   ├── src/
-│   │   ├── ai/               # AI 諮詢元件（獨立資料夾）
-│   │   ├── components/sop/   # SOP 執行元件（10 個子元件）
-│   │   ├── api.js            # Axios 實例 + 認證攔截器
-│   │   ├── App.jsx           # 路由 & Session 管理
+│   │   ├── ai/                     # AI 諮詢元件（獨立資料夾）
+│   │   ├── components/sop/         # SOP 執行元件（10 個子元件）
+│   │   ├── api.js                  # Axios 實例 + 認證攔截器
+│   │   ├── App.jsx                 # 路由 & Session 管理
+│   │   ├── FixturePage.jsx         # 治具管理頁
+│   │   ├── UsersPage.jsx           # 人員管理頁（admin only）
 │   │   └── main.jsx
 │   ├── package.json
 │   └── vite.config.js
-├── simulator/                # 溫箱物理模擬引擎
-├── docs/                     # 演示檔案與報告範本
 ├── Makefile
-├── AGENTS.md                 # 開發規範 & 技術規格（內部參考）
+├── CLAUDE.md                       # 開發規範 & 技術規格（AI 協作參考）
 └── README.md
 ```
 
@@ -181,26 +187,10 @@ dqa-lab-digital-twin/
 
 | 層級 | 技術 | 選擇理由 |
 |------|------|---------|
-| **後端** | FastAPI、SQLAlchemy 2.0、SQLite、Alembic、asyncio | 非同步性能、自動 API 文件、ORM 遷移管理 |
+| **後端** | FastAPI、SQLAlchemy 2.0、SQLite、Alembic、APScheduler | 非同步性能、自動 API 文件、ORM 遷移、排程推播 |
 | **前端** | React 18、Vite、Recharts、Axios | 元件化、快速開發、高效渲染、實時圖表 |
 | **AI** | Gemini API（Embedding + Flash-Lite）、in-memory RAG | 低成本向量化、高質量推理、免費額度足夠 |
-| **通知** | LINE Messaging API | 即時通知、易於自動化 |
-
----
-
-## 功能演示
-
-**儀表板 — 多設備即時監控**
-![Dashboard](./docs/dashboard.gif)
-
-**SOP 執行 — 法規與條件選擇**
-![SOP](./docs/sop.gif)
-
-**AI 法規諮詢 — 自然語言查詢**
-![AI](./docs/ai.gif)
-
-**異常紀錄 — 事件追蹤**
-![ErrorLog](./docs/errorlog.gif)
+| **通知** | LINE Messaging API + APScheduler | 即時推播、排程掃描、易於自動化 |
 
 ---
 
@@ -211,9 +201,10 @@ dqa-lab-digital-twin/
 主要端點：
 - **設備控制**：`GET /api/devices`、`GET /api/device/{id}/data`
 - **SOP 管理**：`POST /api/sop/execute`、`GET /api/sop/{id}/report`
+- **治具管理**：`GET /api/fixtures/`、`POST /api/fixtures/loans`、`POST /api/fixtures/loans/{id}/return`
 - **AI 諮詢**：`POST /api/ai/query`（串流）
-- **異常通知**：`POST /api/emergency-stop`、`GET /api/error-logs`
-- **報告生成**：`GET /api/sop/{id}/report?format=csv`
+- **Auth**：`POST /api/auth/login`、`GET /api/auth/me`、`GET /api/auth/users`
+- **異常紀錄**：`GET /api/error-logs`
 
 ---
 
@@ -243,15 +234,11 @@ make clean        # 清理殘留程序
 
 ## 後續規劃
 
-- **AI 治具管理助手**：根據測試條件自動推薦合適治具
-- **AI 設備排程預估**：基於待測項目估算完整測試時間
-- **Phase 3**：RS-485 真實設備通訊、治具資料庫、JWT 認證、步驟自動確認
-
----
-
-## 貢獻指南
-
-本專案為個人學習專案，歡迎提供建議或參考。如有任何想法或改進建議，請透過 GitHub Issues 聯繫。
+- [ ] 採購清單閉環（缺貨警示 → 採購單 → 到貨入庫）
+- [ ] 汰換提醒（APScheduler 每週掃描 + LINE Bot 推播）
+- [ ] 排程系統（甘特圖 + 自動時長計算 + 設備衝突檢查）
+- [ ] 前端控制中心大改版（三欄固定佈局，1920x1080 設計）
+- [ ] RS-485 真實設備通訊（Phase 3）
 
 ---
 

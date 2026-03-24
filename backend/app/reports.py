@@ -9,7 +9,7 @@ from .standards import STANDARDS_AND_SOPS
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 REPORT_VERSION = "1.0"
-LAB_NAME = "DQA Lab - KSON AICM Digital Twin"
+LAB_NAME = "DQA Lab Digital Twin"
 # fix: 限制單次查詢最大筆數，避免長時間測試資料塞爆記憶體
 MAX_DATA_POINTS = 10000
 
@@ -63,7 +63,7 @@ def download_csv_report(execution_id: int):
         device_records = []
         truncated = False
         if execution.test_started_at and execution.test_ended_at:
-            device_id_filter = execution.device_id or "KSON_CH01"
+            device_id_filter = execution.device_id or "CH-01"
             # fix: 加入 limit 防止大量資料塞爆記憶體
             device_records = (
                 db.query(DeviceData)
@@ -79,7 +79,7 @@ def download_csv_report(execution_id: int):
             # 若筆數達上限，標注報告已截斷
             truncated = len(device_records) == MAX_DATA_POINTS
         else:
-            device_id_filter = execution.device_id or "KSON_CH01"
+            device_id_filter = execution.device_id or "CH-01"
 
         sop_data = STANDARDS_AND_SOPS.get(execution.sop_id, {})
         temp_tolerance = sop_data.get("temp_tolerance", 2.0)

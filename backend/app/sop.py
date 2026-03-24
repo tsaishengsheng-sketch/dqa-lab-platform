@@ -14,7 +14,7 @@ router = APIRouter()
 execution_router = APIRouter(prefix="/api/sop-executions", tags=["sop-executions"])
 
 # 定義設備 ID 清單（目前支援的五個設備）
-DEVICE_IDS = ["KSON_CH01", "KSON_CH02", "KSON_CH03", "KSON_CH04", "KSON_CH05"]
+DEVICE_IDS = ["CH-01", "CH-02", "CH-03", "CH-04", "CH-05"]
 
 
 # 標準樹與 SOP 列表路由
@@ -65,7 +65,7 @@ def get_standards_tree():
 async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
     """啟動指定設備的 SOP 測試"""
     sop_id: str = payload.get("sop_id", "")
-    device_id: str = payload.get("device_id", "KSON_CH01")
+    device_id: str = payload.get("device_id", "CH-01")
     operator: str = payload.get("operator", "")
 
     if not sop_id:
