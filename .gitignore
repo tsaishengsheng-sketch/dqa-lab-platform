@@ -38,7 +38,6 @@ backend/test.db
 .env.*.local
 
 ### 本地開發文檔（不公開）
-Claude.md
 docs/private/
 .local/
 
