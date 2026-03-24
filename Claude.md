@@ -4,7 +4,7 @@
 
 ---
 
-## 當前狀態快照（2026-03-25，v8）
+## 當前狀態快照（2026-03-25，v9）
 
 ### 開發環境
 
@@ -43,6 +43,7 @@ API 文件：http://localhost:8000/docs
 | 汰換提醒 | ✅ | estimated_replacement_date 即時計算、治具總表顏色標示、APScheduler 每週一推播保管人 |
 | 前端大改版（控制中心） | ✅ | 三欄佈局、TopBar 摘要列、LeftPanel 設備卡片、CenterPanel tab 切換、RightPanel AI 側欄 |
 | 控制中心 UI 修正 | ✅ | 設備選擇器去重、LeftPanel 紀錄連結接通、SOPPage 嵌入模式、右欄加寬 300px |
+| RightPanel AI 對話管理 | ✅ | 迷你對話切換列（‹/›箭頭 + 計數）、新增對話 + 清除按鈕、ChatArea 滾動修正、串流 rAF 節流 |
 
 ### 本輪新增 API
 
@@ -79,6 +80,8 @@ API 文件：http://localhost:8000/docs
 - `clearConversation` 未重置 `abortControllerRef`：abort 後未置 null，留下 stale ref
 - 控制中心設備選擇器重複：SOPPage 有內建設備選擇器與 LeftPanel 重複；修正：`MonitorSide` 加 `embedded` prop 隱藏標題與選擇器，`SOPPage` 加 `externalDevice` prop 接受外部設備
 - LeftPanel 紀錄連結無功能：點「異常紀錄」/「執行紀錄」無反應；修正：加 `onSwitchTab` prop，切換 CenterPanel 至 errors/executions 隱藏 tab；`ControlCenter` 新增 `ExecutionList` inline 元件（fetch `/api/reports/list`，支援 CSV 下載）
+- RightPanel ChatArea 無法滾動：wrapper div 不是 flex container，`ChatArea` 的 `flex: 1` 失效，`overflowY: auto` 從未生效；修正：加 `display: flex; flex-direction: column`
+- 串流生成時 UI 凍結：每個 chunk 直接呼叫 `setStreamText()` 觸發高頻 React 重渲；修正：改用 `requestAnimationFrame` 節流，最多每 16ms 更新一次
 
 ---
 
@@ -343,7 +346,7 @@ src/
       MessageBubble.jsx
       useAIChat.jsx          # AI 對話 custom hook
     control/
-      RightPanel.jsx         # AI 側欄（快速按鈕 + ChatArea compact）；寬度 300px
+      RightPanel.jsx         # AI 側欄；迷你對話切換列（‹/› + 新增 + 清除）+ 快速按鈕 + ChatArea compact；寬度 300px
   App.jsx                    # 登入、session 管理、role 控制 → 載入 ControlCenter
   ControlCenter.jsx          # 三欄主框架；含 ExecutionList inline 元件；errors/executions 隱藏 tab
   Dashboard.jsx              # 保留，已不在主 nav 顯示
