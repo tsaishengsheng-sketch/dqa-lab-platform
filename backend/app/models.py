@@ -46,6 +46,124 @@ class User(Base):
     )
 
 
+# ---------- 治具基本資料 ----------
+class Fixture(Base):
+    __tablename__ = "fixtures"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    interface_type: Mapped[str] = mapped_column(
+        String, index=True
+    )  # 介面類型（Ethernet/Fiber/USB...）
+    form_factor: Mapped[str] = mapped_column(String)  # 型態
+    size: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 長度/大小
+    purpose: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 用途
+    estimated_usage: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # 預估使用量
+    total_quantity: Mapped[int] = mapped_column(Integer, default=0)  # 現有數量
+    shortage: Mapped[int] = mapped_column(Integer, default=0)  # 缺貨數量
+    # 使用率：1=每天, 2=週, 3=月, 4=季, 5=年
+    usage_frequency: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # 建議汰換時間：0.5年/1年/2年/3年/量測
+    replacement_years: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    keeper_name: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # Lab Eng（保管人）
+    deputy_name: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # Lab Sup（代理人）
+    vendor: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 廠商
+    model_number: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 型號
+    spec: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 規格
+    lead_time: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 交期
+    unit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 費用
+    loan_count: Mapped[int] = mapped_column(Integer, default=0)  # 借出次數累計
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    __table_args__ = (Index("ix_fixtures_interface_type", "interface_type"),)
+
+    @property
+    def available_quantity(self) -> int:
+        """可借數 = 總數 - 借出中 - 損壞（由 API 層計算）"""
+        return self.total_quantity
+
+
+# ---------- 治具借出紀錄 ----------
+class FixtureLoan(Base):
+    __tablename__ = "fixture_loans"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    fixture_id: Mapped[int] = mapped_column(ForeignKey("fixtures.id"), index=True)
+    borrower_name: Mapped[str] = mapped_column(String)  # 借用人姓名
+    borrower_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    device_id: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # 綁定設備（KSON_CH01~05）
+    project_name: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # 樣品/專案名稱
+    quantity: Mapped[int] = mapped_column(Integer, default=1)  # 借出數量
+    loan_date: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    due_date: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime, nullable=True
+    )  # 預計歸還日
+    return_date: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime, nullable=True
+    )  # 實際歸還日
+    # status: reserved/loaned/returned/damaged/lost/scrapped
+    status: Mapped[str] = mapped_column(String, default="loaned", index=True)
+    return_condition: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )  # 歸還狀態：normal/damaged/lost
+    extension_note: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )  # 延期申請紀錄
+    keeper_note: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )  # 保管人備註
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    __table_args__ = (
+        Index("ix_fixture_loans_status", "status"),
+        Index("ix_fixture_loans_due_date", "due_date"),
+    )
+
+
+# ---------- 採購紀錄 ----------
+class PurchaseOrder(Base):
+    __tablename__ = "purchase_orders"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    fixture_id: Mapped[int] = mapped_column(ForeignKey("fixtures.id"), index=True)
+    quantity: Mapped[int] = mapped_column(Integer)
+    unit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    total_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    vendor: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # status: pending/ordered/arrived/cancelled
+    status: Mapped[str] = mapped_column(String, default="pending")
+    ordered_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    arrived_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+
 # ---------- SOP 模板 ----------
 class SopTemplate(Base):
     __tablename__ = "sop_templates"

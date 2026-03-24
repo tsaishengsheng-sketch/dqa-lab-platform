@@ -20,6 +20,7 @@ from .ai import router as ai_router
 from .rag import warmup_rag
 from .line import router as line_router, push_message
 from .auth import router as auth_router
+from .fixtures import router as fixtures_router
 from .models import SessionLocal, DeviceData, ErrorLog, DeviceState
 from .standards import get_ramp_rate, get_standard
 from .utils import _now_utc, _save_device_state
@@ -99,6 +100,7 @@ app.include_router(errors_router)
 app.include_router(ai_router)
 app.include_router(line_router)
 app.include_router(auth_router)
+app.include_router(fixtures_router)
 
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
 allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
