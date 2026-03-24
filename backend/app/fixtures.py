@@ -516,10 +516,10 @@ async def import_fixtures(file: UploadFile = File(...)):
 
 @router.get("/users")
 def list_users(request: Request):
-    """回傳使用者清單，僅限 keeper/admin（供借出登記下拉選單用）"""
+    """回傳使用者清單（供借出登記下拉選單用，任何已登入使用者皆可呼叫）"""
     role = getattr(request.state, "user_role", None)
-    if role not in ("admin", "keeper"):
-        raise HTTPException(status_code=403, detail="需要保管人或管理者權限")
+    if role is None:
+        raise HTTPException(status_code=401, detail="請先登入")
     db = SessionLocal()
     try:
         users = (
