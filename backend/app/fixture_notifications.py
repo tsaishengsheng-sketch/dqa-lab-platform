@@ -184,6 +184,79 @@ async def scan_overdue_loans():
         logger.error(f"[Notify] scan_overdue_loans 失敗：{e}")
 
 
+async def scan_replacement_reminders():
+    """每週一次掃描 30 天內即將汰換的治具，推播保管人"""
+    import re
+    logger.info("[Notify] 開始汰換提醒掃描...")
+    try:
+        with SessionLocal() as db:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            today = now.date()
+            warn_date = today + datetime.timedelta(days=30)
+
+            fixtures = (
+                db.query(Fixture)
+                .filter(
+                    Fixture.is_active == True,
+                    Fixture.replacement_years.isnot(None),
+                    Fixture.created_at.isnot(None),
+                )
+                .all()
+            )
+
+            # keeper_user_id -> [(fixture_name, due_date, status)]
+            keeper_items: dict = {}
+
+            for f in fixtures:
+                try:
+                    years = float(re.search(r"[\d.]+", str(f.replacement_years)).group())
+                except Exception:
+                    continue
+
+                created = f.created_at
+                if created.tzinfo is not None:
+                    created = created.replace(tzinfo=None)
+                due_date = (created + datetime.timedelta(days=int(years * 365))).date()
+
+                if due_date > warn_date:
+                    continue  # 超過 30 天不處理
+
+                fixture_name = f"{f.interface_type} {f.form_factor}"
+                days_left = (due_date - today).days
+                if days_left < 0:
+                    status = f"已逾期 {abs(days_left)} 天"
+                elif days_left == 0:
+                    status = "今日到期"
+                else:
+                    status = f"剩 {days_left} 天"
+
+                if f.keeper_user_id:
+                    keeper_items.setdefault(f.keeper_user_id, []).append(
+                        (fixture_name, due_date.strftime("%Y/%m/%d"), status)
+                    )
+
+            for keeper_id, items in keeper_items.items():
+                keeper = db.query(User).filter(User.id == keeper_id).first()
+                if not keeper or not keeper.line_user_id:
+                    continue
+                lines = "\n".join(
+                    f"• {name}（{due}，{st}）" for name, due, st in items
+                )
+                await push_to_user(
+                    keeper.line_user_id,
+                    f"🔧 治具汰換提醒\n"
+                    f"━━━━━━━━━━━━━━\n"
+                    f"以下治具預計汰換日期在 30 天內：\n"
+                    f"{lines}\n"
+                    f"━━━━━━━━━━━━━━\n"
+                    f"請安排採購或汰換作業。",
+                )
+
+        logger.info("[Notify] 汰換提醒掃描完成")
+    except Exception as e:
+        logger.error(f"[Notify] scan_replacement_reminders 失敗：{e}")
+
+
 async def notify_monthly_inventory():
     """每月 1 日 08:00 推播保管人進行月盤點"""
     logger.info("[Notify] 推播月盤點提醒...")

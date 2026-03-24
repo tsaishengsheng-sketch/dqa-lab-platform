@@ -39,10 +39,11 @@ export default function ChatArea({
   onRetry,
   onInputChange,
   onKeyDown,
+  compact = false,
 }) {
   return (
     <div style={S.main}>
-      <div ref={chatAreaRef} style={S.chatArea}>
+      <div ref={chatAreaRef} style={{ ...S.chatArea, ...(compact ? S.chatAreaCompact : {}) }}>
         {messages.length === 0 && !loading && (
           <div style={S.emptyHint}>
             <div style={S.emptyIcon}>🔬</div>
@@ -218,6 +219,10 @@ const S = {
     display: "inline-block",
     animation: "dotBounce 1.2s infinite",
   },
+  chatAreaCompact: {
+    padding: "12px 14px",
+    gap: 10,
+  },
   inputArea: {
     borderTop: "1px solid #30363d",
     padding: "16px 24px",
@@ -253,6 +258,7 @@ const S = {
     whiteSpace: "nowrap",
     transition: "opacity .15s",
     height: 42,
+    cursor: "pointer",
   },
   stopBtn: {
     background: "transparent",

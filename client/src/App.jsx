@@ -1,21 +1,7 @@
 import { useState, useEffect } from "react";
-import Dashboard from "./Dashboard";
-import SOPPage from "./SOPPage";
-import ErrorLog from "./ErrorLog";
-import AIPage from "./AIPage";
-import FixturePage from "./FixturePage";
-import UsersPage from "./UsersPage";
+import ControlCenter from "./ControlCenter";
 import { API_BASE } from "./api";
 import api from "./api";
-
-const PAGES = [
-  { key: "/", label: "儀表板" },
-  { key: "/sop", label: "SOP 執行" },
-  { key: "/fixtures", label: "治具管理" },
-  { key: "/errors", label: "異常看板" },
-  { key: "/ai", label: "AI 諮詢" },
-  { key: "/users", label: "人員管理", adminOnly: true },
-];
 
 const SESSION_DURATION = 8 * 60 * 60 * 1000;
 
@@ -41,110 +27,6 @@ function getCurrentRole() {
   return localStorage.getItem("user_role") || "guest";
 }
 
-const NavBar = ({ current, onChange, onLogout, role, displayName }) => (
-  <nav
-    style={{
-      padding: "10px 24px",
-      backgroundColor: "#161b22",
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      borderBottom: "1px solid #30363d",
-      zIndex: 1000,
-      flexShrink: 0,
-    }}
-  >
-    <span
-      style={{
-        color: "#58a6ff",
-        fontWeight: 700,
-        fontSize: 14,
-        marginRight: 16,
-      }}
-    >
-      DQA Lab
-    </span>
-    {PAGES.filter(({ adminOnly }) => !adminOnly || role === "admin").map(({ key, label }) => {
-      const active = current === key;
-      return (
-        <button
-          key={key}
-          onClick={() => onChange(key)}
-          style={{
-            color: active ? "#cdd9e5" : "#8b949e",
-            background: active ? "#21262d" : "transparent",
-            border: `1px solid ${active ? "#30363d" : "transparent"}`,
-            fontWeight: 600,
-            fontSize: 14,
-            padding: "4px 12px",
-            borderRadius: 6,
-            cursor: "pointer",
-            transition: "all .15s",
-          }}
-        >
-          {label}
-        </button>
-      );
-    })}
-    <div
-      style={{
-        marginLeft: "auto",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-      }}
-    >
-      {displayName && (
-        <span style={{ color: "#8b949e", fontSize: 12 }}>
-          {displayName}
-          <span
-            style={{
-              marginLeft: 6,
-              fontSize: 10,
-              padding: "1px 6px",
-              borderRadius: 3,
-              background:
-                role === "admin"
-                  ? "#1f3a1f"
-                  : role === "keeper"
-                    ? "#1f2f3a"
-                    : "#21262d",
-              color:
-                role === "admin"
-                  ? "#3fb950"
-                  : role === "keeper"
-                    ? "#58a6ff"
-                    : "#8b949e",
-            }}
-          >
-            {role === "admin"
-              ? "管理者"
-              : role === "keeper"
-                ? "保管人"
-                : role === "engineer"
-                  ? "工程師"
-                  : "訪客"}
-          </span>
-        </span>
-      )}
-      <button
-        onClick={onLogout}
-        style={{
-          color: "#8b949e",
-          background: "transparent",
-          border: "1px solid #30363d",
-          fontWeight: 600,
-          fontSize: 12,
-          padding: "4px 12px",
-          borderRadius: 6,
-          cursor: "pointer",
-        }}
-      >
-        登出
-      </button>
-    </div>
-  </nav>
-);
 
 function LoginPage({ onLogin }) {
   const [mode, setMode] = useState("user");
@@ -484,7 +366,6 @@ function LoginPage({ onLogin }) {
 
 function App() {
   const [authed, setAuthed] = useState(() => isSessionValid());
-  const [page, setPage] = useState("/");
   const [role, setRole] = useState(getCurrentRole);
   const [displayName, setDisplayName] = useState(
     () => localStorage.getItem("user_display_name") || ""
@@ -501,17 +382,13 @@ function App() {
       localStorage.setItem("user_display_name", dn);
       setRole(r);
       setDisplayName(dn);
-    }).catch(() => {
-      // token 失效由 api.js interceptor 處理（自動登出）
-    });
+    }).catch(() => {});
   }, [authed]);
 
   const handleLogout = async () => {
     const token = localStorage.getItem("user_token");
     if (token) {
-      try {
-        await api.post("/api/auth/logout");
-      } catch (_) {}
+      try { await api.post("/api/auth/logout"); } catch (_) {}
     }
     clearSession();
     setAuthed(false);
@@ -520,73 +397,8 @@ function App() {
   if (!authed) return <LoginPage onLogin={() => setAuthed(true)} />;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        backgroundColor: "#0d1117",
-      }}
-    >
-      <NavBar
-        current={page}
-        onChange={setPage}
-        onLogout={handleLogout}
-        role={role}
-        displayName={displayName}
-      />
-      <main
-        style={{
-          width: "100%",
-          flex: 1,
-          overflow: "hidden",
-          position: "relative",
-        }}
-      >
-        <div
-          style={{ display: page === "/" ? "block" : "none", height: "100%" }}
-        >
-          <Dashboard active={page === "/"} />
-        </div>
-        <div
-          style={{
-            display: page === "/sop" ? "block" : "none",
-            height: "100%",
-          }}
-        >
-          <SOPPage active={page === "/sop"} />
-        </div>
-        <div
-          style={{
-            display: page === "/fixtures" ? "block" : "none",
-            height: "100%",
-          }}
-        >
-          <FixturePage active={page === "/fixtures"} role={role} />
-        </div>
-        <div
-          style={{
-            display: page === "/errors" ? "block" : "none",
-            height: "100%",
-          }}
-        >
-          <ErrorLog />
-        </div>
-        <div
-          style={{
-            display: page === "/ai" ? "flex" : "none",
-            flexDirection: "column",
-            height: "100%",
-          }}
-        >
-          <AIPage />
-        </div>
-        <div
-          style={{ display: page === "/users" ? "block" : "none", height: "100%" }}
-        >
-          <UsersPage active={page === "/users"} />
-        </div>
-      </main>
+    <div style={{ height: "100vh", backgroundColor: "#0d1117", overflow: "hidden" }}>
+      <ControlCenter role={role} displayName={displayName} onLogout={handleLogout} />
     </div>
   );
 }

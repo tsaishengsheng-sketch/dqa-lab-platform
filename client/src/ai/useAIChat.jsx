@@ -34,6 +34,7 @@ export default function useAIChat() {
   const textareaRef = useRef(null);
   const abortControllerRef = useRef(null);
   const streamTextRef = useRef("");
+  const streamRafRef = useRef(null);
   const startTimeRef = useRef(null);
   const userScrolledUpRef = useRef(false);
   const activeIdRef = useRef(null);
@@ -192,6 +193,10 @@ export default function useAIChat() {
 
   // A5 fix: stopStream 移除 focus()，統一由 finally 處理
   const stopStream = useCallback(() => {
+    if (streamRafRef.current) {
+      cancelAnimationFrame(streamRafRef.current);
+      streamRafRef.current = null;
+    }
     abortControllerRef.current?.abort();
     const text = streamTextRef.current;
     const elapsed = startTimeRef.current
@@ -269,7 +274,15 @@ export default function useAIChat() {
           if (done) break;
           fullText += decoder.decode(value, { stream: true });
           streamTextRef.current = fullText;
-          setStreamText(fullText);
+          // 用 rAF 節流：每個 animation frame 最多更新一次，避免高頻 chunk 卡住 UI
+          if (streamRafRef.current) cancelAnimationFrame(streamRafRef.current);
+          streamRafRef.current = requestAnimationFrame(() => {
+            setStreamText(streamTextRef.current);
+          });
+        }
+        if (streamRafRef.current) {
+          cancelAnimationFrame(streamRafRef.current);
+          streamRafRef.current = null;
         }
 
         if (!controller.signal.aborted && fullText.trim()) {
@@ -318,7 +331,10 @@ export default function useAIChat() {
         }
       }
       if (!userMsg) return;
-      updateMessages(messages.slice(0, msgIndex));
+      const slicedMessages = messages.slice(0, msgIndex);
+      // 必須先同步更新 ref，sendMessage 讀 messagesRef.current 時才能拿到正確的截斷版本
+      messagesRef.current = slicedMessages;
+      updateMessages(slicedMessages);
       sendMessage(userMsg);
     },
     [messages, sendMessage, updateMessages],
@@ -326,6 +342,7 @@ export default function useAIChat() {
 
   const clearConversation = useCallback(() => {
     abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     updateMessages([]);
     setInput("");
     setLoading(false);

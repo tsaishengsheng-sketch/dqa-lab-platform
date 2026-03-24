@@ -116,8 +116,15 @@ const ConfirmModal = ({ message, onConfirm, onCancel }) => (
   </div>
 );
 
-const SOPPage = ({ active = true }) => {
-  const [selectedDevice, setSelectedDevice] = useState("CH-01");
+const SOPPage = ({ active = true, externalDevice }) => {
+  const [selectedDevice, setSelectedDevice] = useState(externalDevice || "CH-01");
+
+  // 同步外部設備選擇（ControlCenter LeftPanel 點選時）
+  useEffect(() => {
+    if (externalDevice && externalDevice !== selectedDevice) {
+      setSelectedDevice(externalDevice);
+    }
+  }, [externalDevice]); // eslint-disable-line
   const [allDevices, setAllDevices] = useState({});
   const [deviceStates, setDeviceStates] = useState(() =>
     Object.fromEntries(DEVICE_IDS.map((id) => [id, initDeviceState()])),
@@ -401,6 +408,7 @@ const SOPPage = ({ active = true }) => {
         isOffline={isOffline}
         isEmergency={isEmergency}
         onSelectDevice={setSelectedDevice}
+        embedded={!!externalDevice}
       />
 
       <main className="control-side">

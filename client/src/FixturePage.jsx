@@ -1182,8 +1182,16 @@ export default function FixturePage({ active, role }) {
                           f.usage_frequency
                         ] || "—"}
                       </td>
-                      <td style={{ ...tdStyle, color: "#8b949e" }}>
-                        {f.replacement_years || "—"}
+                      <td style={tdStyle}>
+                        {(() => {
+                          if (!f.estimated_replacement_date) return <span style={{ color: "#484f58" }}>—</span>;
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          const due = new Date(f.estimated_replacement_date);
+                          const daysLeft = Math.ceil((due - today) / 86400000);
+                          const color = daysLeft < 0 ? "#f85149" : daysLeft <= 30 ? "#f0a500" : "#8b949e";
+                          return <span style={{ color, fontWeight: daysLeft <= 30 ? 600 : 400 }}>{f.estimated_replacement_date}</span>;
+                        })()}
                       </td>
                       <td style={{ ...tdStyle, color: f.keeper_name ? "#58a6ff" : "#484f58" }}>
                         {f.keeper_name || "未設定"}

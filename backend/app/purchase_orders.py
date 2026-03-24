@@ -56,7 +56,7 @@ class PurchaseOrderCreate(BaseModel):
 @router.post("/")
 def create_purchase_order(body: PurchaseOrderCreate, request: Request):
     """新增採購單（keeper/admin only）"""
-    role = getattr(request.state, "role", "guest")
+    role = getattr(request.state, "user_role", None)
     if role not in ("admin", "keeper"):
         raise HTTPException(status_code=403, detail="無操作權限")
 
@@ -99,7 +99,7 @@ class PurchaseOrderUpdate(BaseModel):
 @router.patch("/{order_id}")
 def update_purchase_order(order_id: int, body: PurchaseOrderUpdate, request: Request):
     """更新採購單；status=arrived 時自動將 arrived_quantity 加入治具庫存（keeper/admin only）"""
-    role = getattr(request.state, "role", "guest")
+    role = getattr(request.state, "user_role", None)
     if role not in ("admin", "keeper"):
         raise HTTPException(status_code=403, detail="無操作權限")
 

@@ -104,6 +104,22 @@ def _calc_damaged(db, fixture_id: int) -> int:
     )
 
 
+def _calc_replacement_date(f: Fixture) -> Optional[str]:
+    """根據 replacement_years 與 created_at 計算預估汰換日期"""
+    if not f.replacement_years or not f.created_at:
+        return None
+    try:
+        import re
+        years = float(re.search(r"[\d.]+", str(f.replacement_years)).group())
+        days = int(years * 365)
+        created = f.created_at
+        if created.tzinfo is not None:
+            created = created.replace(tzinfo=None)
+        return (created + datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+    except Exception:
+        return None
+
+
 def _fixture_to_out(db, f: Fixture) -> dict:
     loaned = _calc_loaned(db, f.id)
     damaged = _calc_damaged(db, f.id)
@@ -122,6 +138,7 @@ def _fixture_to_out(db, f: Fixture) -> dict:
         "damaged_quantity": damaged,
         "usage_frequency": f.usage_frequency,
         "replacement_years": f.replacement_years,
+        "estimated_replacement_date": _calc_replacement_date(f),
         "note": f.note,
         "keeper_name": f.keeper_name,
         "keeper_user_id": f.keeper_user_id,

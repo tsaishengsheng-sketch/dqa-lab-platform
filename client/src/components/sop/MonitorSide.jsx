@@ -29,83 +29,103 @@ const MonitorSide = ({
   isOffline,
   isEmergency,
   onSelectDevice,
+  embedded = false,
 }) => {
   const sc = STATUS_CONFIG[data.status] || STATUS_CONFIG.OFFLINE;
 
   return (
     <aside className="monitor-side">
-      {/* Brand + status */}
-      <div className="brand-box">
-        <h1 className="main-title">DQA Lab | Digital Twin</h1>
-        <div className="status-row">
-          <span className={`status-dot ${data.status.toLowerCase()}`} />
+      {/* Brand + status（嵌入模式隱藏標題）*/}
+      {!embedded && (
+        <div className="brand-box">
+          <h1 className="main-title">DQA Lab | Digital Twin</h1>
+          <div className="status-row">
+            <span className={`status-dot ${data.status.toLowerCase()}`} />
+            <span
+              style={{
+                padding: "2px 8px",
+                borderRadius: 4,
+                fontSize: 11,
+                fontWeight: 700,
+                color: sc.color,
+                background: sc.bg,
+                border: `1px solid ${sc.color}44`,
+                letterSpacing: 0.5,
+              }}
+            >
+              {data.status}
+            </span>
+            <span className="update-time">{data.timestamp}</span>
+          </div>
+        </div>
+      )}
+
+      {/* 嵌入模式：簡化狀態列 */}
+      {embedded && (
+        <div style={{ padding: "10px 16px 6px", display: "flex", alignItems: "center", gap: 8 }}>
           <span
             style={{
-              padding: "2px 8px",
-              borderRadius: 4,
-              fontSize: 11,
-              fontWeight: 700,
-              color: sc.color,
-              background: sc.bg,
-              border: `1px solid ${sc.color}44`,
-              letterSpacing: 0.5,
+              padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700,
+              color: sc.color, background: sc.bg, border: `1px solid ${sc.color}44`,
             }}
           >
-            {data.status}
+            {selectedDevice} — {data.status}
           </span>
-          <span className="update-time">{data.timestamp}</span>
+          <span style={{ fontSize: 11, color: "#484f58" }}>{data.timestamp}</span>
         </div>
-      </div>
+      )}
 
-      {/* Device selector */}
-      <div
-        style={{
-          background: "#161b22",
-          border: "1px solid #30363d",
-          borderRadius: 8,
-          padding: "12px 16px",
-          marginBottom: 12,
-        }}
-      >
+      {/* Device selector（嵌入模式隱藏）*/}
+      {!embedded && (
         <div
           style={{
-            fontSize: 11,
-            color: "#484f58",
-            letterSpacing: 1,
-            marginBottom: 8,
-            fontWeight: 600,
+            background: "#161b22",
+            border: "1px solid #30363d",
+            borderRadius: 8,
+            padding: "12px 16px",
+            marginBottom: 12,
           }}
         >
-          SELECT DEVICE
+          <div
+            style={{
+              fontSize: 11,
+              color: "#484f58",
+              letterSpacing: 1,
+              marginBottom: 8,
+              fontWeight: 600,
+            }}
+          >
+            SELECT DEVICE
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {DEVICE_IDS.map((id) => {
+              const d = allDevices[id];
+              const s = STATUS_CONFIG[d?.status] || STATUS_CONFIG.OFFLINE;
+              const isSelected = id === selectedDevice;
+              return (
+                <button
+                  key={id}
+                  onClick={() => onSelectDevice(id)}
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: 6,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    fontFamily: "monospace",
+                    fontWeight: isSelected ? 700 : 400,
+                    border: `1px solid ${isSelected ? s.color : "#30363d"}`,
+                    background: isSelected ? s.bg : "#0d1117",
+                    color: isSelected ? s.color : "#8b949e",
+                    transition: "all .15s",
+                  }}
+                >
+                  {id}
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {DEVICE_IDS.map((id) => {
-            const d = allDevices[id];
-            const s = STATUS_CONFIG[d?.status] || STATUS_CONFIG.OFFLINE;
-            const isSelected = id === selectedDevice;
-            return (
-              <button
-                key={id}
-                onClick={() => onSelectDevice(id)}
-                style={{
-                  padding: "5px 10px",
-                  borderRadius: 6,
-                  fontSize: 11,
-                  cursor: "pointer",
-                  fontFamily: "monospace",
-                  fontWeight: isSelected ? 700 : 400,
-                  border: `1px solid ${isSelected ? s.color : "#30363d"}`,
-                  background: isSelected ? s.bg : "#0d1117",
-                  color: isSelected ? s.color : "#8b949e",
-                  transition: "all .15s",
-                }}
-              >
-                {id}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      )}
 
       {/* Current mission */}
       <div className="info-card highlight">

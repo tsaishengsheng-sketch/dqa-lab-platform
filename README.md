@@ -157,8 +157,9 @@ dqa-lab-digital-twin/
 │   │   ├── ai.py                   # Gemini 推理整合
 │   │   ├── rag.py                  # RAG 向量檢索 & 智能標準推薦
 │   │   ├── auth.py                 # 帳號驗證、token 管理、使用者 CRUD
-│   │   ├── fixtures.py             # 治具管理 API
-│   │   ├── fixture_notifications.py # LINE Bot 推播排程
+│   │   ├── fixtures.py             # 治具管理 API（含汰換日期即時計算）
+│   │   ├── purchase_orders.py      # 採購清單 CRUD
+│   │   ├── fixture_notifications.py # LINE Bot 推播排程（含汰換提醒）
 │   │   ├── line.py                 # LINE Messaging API 推播
 │   │   ├── reports.py              # ISO 17025 相容報告生成
 │   │   └── serial_reader.py        # RS-485 串列通訊（Phase 3 準備）
@@ -169,8 +170,10 @@ dqa-lab-digital-twin/
 │   ├── src/
 │   │   ├── ai/                     # AI 諮詢元件（獨立資料夾）
 │   │   ├── components/sop/         # SOP 執行元件（10 個子元件）
+│   │   ├── components/control/     # 控制中心元件（RightPanel AI 側欄）
 │   │   ├── api.js                  # Axios 實例 + 認證攔截器
-│   │   ├── App.jsx                 # 路由 & Session 管理
+│   │   ├── App.jsx                 # Session 管理 → 載入 ControlCenter
+│   │   ├── ControlCenter.jsx       # 三欄主框架（TopBar + LeftPanel + CenterPanel）
 │   │   ├── FixturePage.jsx         # 治具管理頁
 │   │   ├── UsersPage.jsx           # 人員管理頁（admin only）
 │   │   └── main.jsx
@@ -234,10 +237,10 @@ make clean        # 清理殘留程序
 
 ## 後續規劃
 
-- [ ] 採購清單閉環（缺貨警示 → 採購單 → 到貨入庫）
-- [ ] 汰換提醒（APScheduler 每週掃描 + LINE Bot 推播）
+- [x] 採購清單閉環（缺貨警示 → 採購單 → 到貨入庫）
+- [x] 汰換提醒（APScheduler 每週掃描 + LINE Bot 推播）
+- [x] 前端控制中心大改版（三欄固定佈局，TopBar + LeftPanel + CenterPanel + AI 側欄，設備選擇器整合、紀錄連結接通）
 - [ ] 排程系統（甘特圖 + 自動時長計算 + 設備衝突檢查）
-- [ ] 前端控制中心大改版（三欄固定佈局，1920x1080 設計）
 - [ ] RS-485 真實設備通訊（Phase 3）
 
 ---
