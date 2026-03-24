@@ -131,7 +131,7 @@ def _fixture_to_out(db, f: Fixture) -> dict:
 @router.get("/", response_model=List[dict])
 def list_fixtures(
     interface_type: Optional[str] = None,
-    status: Optional[str] = None,  # ok / shortage / out_of_stock / loaned
+    status: Optional[str] = None,
     search: Optional[str] = None,
 ):
     db = SessionLocal()
@@ -168,7 +168,6 @@ def list_fixtures(
 
 @router.get("/summary")
 def get_summary():
-    """今日治具動態摘要（左欄用）"""
     db = SessionLocal()
     try:
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -206,7 +205,6 @@ def get_summary():
             .count()
         )
 
-        # 汰換提醒（replacement_years = 0.5年 且建立超過該時間）
         replacement_due = (
             db.query(Fixture)
             .filter(
@@ -259,7 +257,6 @@ def get_fixture(fixture_id: int):
 
 @router.get("/loans/active")
 def list_active_loans():
-    """目前所有借出中的治具"""
     db = SessionLocal()
     try:
         loans = (
@@ -294,7 +291,6 @@ def list_active_loans():
 
 @router.get("/loans/overdue")
 def list_overdue_loans():
-    """逾期未還清單"""
     db = SessionLocal()
     try:
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -332,7 +328,6 @@ def list_overdue_loans():
 
 @router.post("/loans")
 def create_loan(body: LoanCreate):
-    """借出登記（保管人操作）"""
     db = SessionLocal()
     try:
         f = db.query(Fixture).filter(Fixture.id == body.fixture_id).first()
@@ -368,7 +363,6 @@ def create_loan(body: LoanCreate):
 
 @router.post("/loans/{loan_id}/return")
 def return_loan(loan_id: int, body: ReturnUpdate):
-    """歸還確認（保管人操作）"""
     db = SessionLocal()
     try:
         loan = db.query(FixtureLoan).filter(FixtureLoan.id == loan_id).first()
@@ -387,7 +381,6 @@ def return_loan(loan_id: int, body: ReturnUpdate):
             loan.status = "damaged"
         elif body.return_condition == "lost":
             loan.status = "lost"
-            # 遺失時從總數扣除
             f = db.query(Fixture).filter(Fixture.id == loan.fixture_id).first()
             if f:
                 f.total_quantity = max(0, f.total_quantity - loan.quantity)
@@ -400,7 +393,6 @@ def return_loan(loan_id: int, body: ReturnUpdate):
 
 @router.post("/loans/{loan_id}/extend")
 def extend_loan(loan_id: int, body: ExtensionRequest):
-    """延期申請"""
     db = SessionLocal()
     try:
         loan = db.query(FixtureLoan).filter(FixtureLoan.id == loan_id).first()
@@ -431,89 +423,68 @@ async def import_fixtures(file: UploadFile = File(...)):
     contents = await file.read()
     df = pd.read_excel(io.BytesIO(contents), header=None)
 
-    # 第 0 行是標題行，從第 1 行開始是資料
-    col_map = {
-        0: "priority",
-        1: "item_no",
-        2: "interface_type",
-        3: "form_factor",
-        4: "size",
-        5: "purpose",
-        6: "estimated_usage",
-        7: "total_quantity",
-        8: "shortage",
-        9: "usage_frequency",
-        10: "replacement_years",
-        11: "note",
-        12: "keeper_name",
-        13: "deputy_name",
-        16: "vendor",
-        18: "model_number",
-        19: "spec",
-        20: "lead_time",
-        21: "unit_price",
-    }
-
     db = SessionLocal()
     imported = 0
     skipped = 0
+
+    def safe_col(row, idx):
+        """安全讀取欄位，欄位不存在或為空時回傳 None"""
+        try:
+            val = row[idx]
+            if pd.isna(val):
+                return None
+            s = str(val).strip()
+            return s if s and s != "nan" else None
+        except (KeyError, IndexError):
+            return None
+
+    def safe_int_col(row, idx, default=0):
+        try:
+            val = row[idx]
+            if pd.isna(val):
+                return default
+            return int(float(val))
+        except (KeyError, IndexError, ValueError, TypeError):
+            return default
+
+    def safe_float_col(row, idx):
+        try:
+            val = row[idx]
+            if pd.isna(val):
+                return None
+            return float(val)
+        except (KeyError, IndexError, ValueError, TypeError):
+            return None
 
     try:
         for idx, row in df.iterrows():
             if idx == 0:
                 continue  # 跳過標題行
 
-            interface_type = str(row[2]).strip() if pd.notna(row[2]) else ""
-            form_factor = str(row[3]).strip() if pd.notna(row[3]) else ""
+            interface_type = safe_col(row, 2) or ""
+            form_factor = safe_col(row, 3) or ""
 
-            if (
-                not interface_type
-                or interface_type == "nan"
-                or not form_factor
-                or form_factor == "nan"
-            ):
+            if not interface_type or not form_factor:
                 skipped += 1
                 continue
 
-            def safe_int(val, default=0):
-                try:
-                    v = float(val)
-                    return int(v) if not pd.isna(v) else default
-                except Exception:
-                    return default
-
-            def safe_float(val):
-                try:
-                    v = float(val)
-                    return v if not pd.isna(v) else None
-                except Exception:
-                    return None
-
-            def safe_str(val):
-                if pd.isna(val):
-                    return None
-                s = str(val).strip()
-                return s if s and s != "nan" else None
-
             fixture = Fixture(
-                priority=safe_int(row[0], None),
+                priority=safe_int_col(row, 0, None),
                 interface_type=interface_type,
                 form_factor=form_factor,
-                size=safe_str(row[4]),
-                purpose=safe_str(row[5]),
-                estimated_usage=safe_float(row[6]),
-                total_quantity=safe_int(row[7], 0),
-                shortage=safe_int(row[8], 0),
-                usage_frequency=safe_int(row[9], None),
-                replacement_years=safe_str(row[10]),
-                note=safe_str(row[11]),
-                keeper_name=safe_str(row[12]),
-                deputy_name=safe_str(row[13]),
-                vendor=safe_str(row[16]),
-                model_number=safe_str(row[18]),
-                spec=safe_str(row[19]),
-                lead_time=safe_str(row[20]),
-                unit_price=safe_float(row[21]),
+                size=safe_col(row, 4),
+                purpose=safe_col(row, 5),
+                estimated_usage=safe_float_col(row, 6),
+                total_quantity=safe_int_col(row, 7, 0),
+                shortage=safe_int_col(row, 8, 0),
+                usage_frequency=safe_int_col(row, 9, None),
+                replacement_years=safe_col(row, 10),
+                note=safe_col(row, 11),
+                keeper_name=safe_col(row, 12),
+                deputy_name=safe_col(row, 13),
+                vendor=safe_col(row, 14),
+                model_number=safe_col(row, 15),
+                unit_price=safe_float_col(row, 16),
             )
             db.add(fixture)
             imported += 1
@@ -532,7 +503,6 @@ async def import_fixtures(file: UploadFile = File(...)):
 
 @router.post("/{fixture_id}/inventory")
 def update_inventory(fixture_id: int, actual_quantity: int):
-    """月盤點回填實際數量"""
     db = SessionLocal()
     try:
         f = db.query(Fixture).filter(Fixture.id == fixture_id).first()
@@ -541,7 +511,6 @@ def update_inventory(fixture_id: int, actual_quantity: int):
 
         diff = f.total_quantity - actual_quantity
         f.total_quantity = actual_quantity
-
         db.commit()
         return {
             "status": "success",

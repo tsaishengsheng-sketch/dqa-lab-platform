@@ -2,20 +2,18 @@ import os
 import time
 import hashlib
 import secrets
-from fastapi import Request
+import datetime
+from typing import Optional
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from fastapi import APIRouter
 from pydantic import BaseModel
 from .models import SessionLocal, User
-from typing import Optional
 
 DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "")
 
 _fail_tracker: dict = {}
 _FAIL_TRACKER_MAXSIZE = 1000
 
-# token → {user_id, role, expires_at}
-_token_store: dict = {}
 TOKEN_TTL = 8 * 60 * 60  # 8 小時
 
 SKIP_PATHS = {
@@ -41,29 +39,55 @@ def verify_password(password: str, hashed: str) -> bool:
     return hash_password(password) == hashed
 
 
-# ---------- Token ----------
-def create_token(user_id: int, role: str) -> str:
+# ---------- Token（存 DB，重啟不失效）----------
+def create_token(user: User, db) -> str:
     token = secrets.token_hex(32)
-    _token_store[token] = {
-        "user_id": user_id,
-        "role": role,
-        "expires_at": time.time() + TOKEN_TTL,
-    }
+    expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+        seconds=TOKEN_TTL
+    )
+    user.current_token = token
+    user.token_expires_at = expires
+    db.commit()
     return token
 
 
 def get_token_info(token: str) -> Optional[dict]:
-    info = _token_store.get(token)
-    if not info:
+    if not token:
         return None
-    if info["expires_at"] < time.time():
-        del _token_store[token]
-        return None
-    return info
+    db = SessionLocal()
+    try:
+        user = (
+            db.query(User)
+            .filter(
+                User.current_token == token,
+                User.is_active == True,
+            )
+            .first()
+        )
+        if not user:
+            return None
+        if user.token_expires_at is None:
+            return None
+        expires = user.token_expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=datetime.timezone.utc)
+        if expires < datetime.datetime.now(datetime.timezone.utc):
+            return None
+        return {"user_id": user.id, "role": user.role}
+    finally:
+        db.close()
 
 
 def revoke_token(token: str):
-    _token_store.pop(token, None)
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.current_token == token).first()
+        if user:
+            user.current_token = None
+            user.token_expires_at = None
+            db.commit()
+    finally:
+        db.close()
 
 
 # ---------- Rate limiting ----------
@@ -131,7 +155,7 @@ def login(body: LoginRequest, request: Request):
             return JSONResponse(status_code=401, content={"detail": "帳號或密碼錯誤"})
 
         tracker["count"] = 0
-        token = create_token(user.id, user.role)
+        token = create_token(user, db)
         return LoginResponse(
             token=token, role=user.role, display_name=user.display_name
         )
@@ -168,7 +192,7 @@ async def auth_middleware(request: Request, call_next):
             status_code=429, content={"detail": f"太多次錯誤，請 {remaining} 秒後再試"}
         )
 
-    # 方式一：X-User-Token（帳號登入）
+    # 方式一：X-User-Token（帳號登入，查 DB）
     user_token = request.headers.get("X-User-Token", "")
     if user_token:
         info = get_token_info(user_token)
@@ -177,9 +201,11 @@ async def auth_middleware(request: Request, call_next):
             request.state.user_id = info["user_id"]
             tracker["count"] = 0
             return await call_next(request)
-        return JSONResponse(status_code=401, content={"detail": "Token 無效或已過期"})
+        return JSONResponse(
+            status_code=401, content={"detail": "Token 無效或已過期，請重新登入"}
+        )
 
-    # 方式二：X-Demo-Password（訪客模式，保留現有功能）
+    # 方式二：X-Demo-Password（訪客模式）
     provided = request.headers.get("X-Demo-Password", "")
     if provided == DEMO_PASSWORD:
         request.state.user_role = "guest"

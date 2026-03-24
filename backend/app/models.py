@@ -41,6 +41,13 @@ class User(Base):
     line_user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     loan_limit: Mapped[int] = mapped_column(Integer, default=10)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # token 持久化（後端重啟不失效）
+    current_token: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, index=True
+    )
+    token_expires_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
@@ -52,45 +59,30 @@ class Fixture(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    interface_type: Mapped[str] = mapped_column(
-        String, index=True
-    )  # 介面類型（Ethernet/Fiber/USB...）
-    form_factor: Mapped[str] = mapped_column(String)  # 型態
-    size: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 長度/大小
-    purpose: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 用途
-    estimated_usage: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )  # 預估使用量
-    total_quantity: Mapped[int] = mapped_column(Integer, default=0)  # 現有數量
-    shortage: Mapped[int] = mapped_column(Integer, default=0)  # 缺貨數量
-    # 使用率：1=每天, 2=週, 3=月, 4=季, 5=年
+    interface_type: Mapped[str] = mapped_column(String, index=True)
+    form_factor: Mapped[str] = mapped_column(String)
+    size: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    purpose: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    estimated_usage: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    total_quantity: Mapped[int] = mapped_column(Integer, default=0)
+    shortage: Mapped[int] = mapped_column(Integer, default=0)
     usage_frequency: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # 建議汰換時間：0.5年/1年/2年/3年/量測
     replacement_years: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    keeper_name: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )  # Lab Eng（保管人）
-    deputy_name: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )  # Lab Sup（代理人）
-    vendor: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 廠商
-    model_number: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 型號
-    spec: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 規格
-    lead_time: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # 交期
-    unit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 費用
-    loan_count: Mapped[int] = mapped_column(Integer, default=0)  # 借出次數累計
+    keeper_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    deputy_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    vendor: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    model_number: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    spec: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    lead_time: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    unit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    loan_count: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
 
     __table_args__ = (Index("ix_fixtures_interface_type", "interface_type"),)
-
-    @property
-    def available_quantity(self) -> int:
-        """可借數 = 總數 - 借出中 - 損壞（由 API 層計算）"""
-        return self.total_quantity
 
 
 # ---------- 治具借出紀錄 ----------
@@ -99,37 +91,26 @@ class FixtureLoan(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     fixture_id: Mapped[int] = mapped_column(ForeignKey("fixtures.id"), index=True)
-    borrower_name: Mapped[str] = mapped_column(String)  # 借用人姓名
+    borrower_name: Mapped[str] = mapped_column(String)
     borrower_user_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )
-    device_id: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )  # 綁定設備（KSON_CH01~05）
-    project_name: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )  # 樣品/專案名稱
-    quantity: Mapped[int] = mapped_column(Integer, default=1)  # 借出數量
+    device_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    project_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
     loan_date: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
     due_date: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime, nullable=True
-    )  # 預計歸還日
+    )
     return_date: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime, nullable=True
-    )  # 實際歸還日
-    # status: reserved/loaned/returned/damaged/lost/scrapped
+    )
     status: Mapped[str] = mapped_column(String, default="loaned", index=True)
-    return_condition: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )  # 歸還狀態：normal/damaged/lost
-    extension_note: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True
-    )  # 延期申請紀錄
-    keeper_note: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True
-    )  # 保管人備註
+    return_condition: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    extension_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    keeper_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
@@ -150,7 +131,6 @@ class PurchaseOrder(Base):
     unit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     total_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     vendor: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    # status: pending/ordered/arrived/cancelled
     status: Mapped[str] = mapped_column(String, default="pending")
     ordered_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime, nullable=True
