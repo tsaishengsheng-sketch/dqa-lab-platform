@@ -21,6 +21,7 @@ from .rag import warmup_rag
 from .line import router as line_router, push_message
 from .auth import router as auth_router
 from .fixtures import router as fixtures_router
+from .fixture_notifications import scan_overdue_loans, notify_monthly_inventory
 from .models import SessionLocal, DeviceData, ErrorLog, DeviceState
 from .standards import get_ramp_rate, get_standard
 from .utils import _now_utc, _save_device_state
@@ -87,7 +88,16 @@ async def lifespan(app: FastAPI):
     background_tasks.add(task)
     task.add_done_callback(background_tasks.discard)
     app.state.http_client = _httpx.AsyncClient(timeout=10.0)
+
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    scheduler = AsyncIOScheduler(timezone="Asia/Taipei")
+    scheduler.add_job(scan_overdue_loans, "cron", hour=8, minute=0)
+    scheduler.add_job(notify_monthly_inventory, "cron", day=1, hour=8, minute=0)
+    scheduler.start()
+    print("✅ APScheduler 已啟動（每日 08:00 掃描逾期治具，每月 1 日月盤點提醒）")
+
     yield
+    scheduler.shutdown()
     await app.state.http_client.aclose()
 
 

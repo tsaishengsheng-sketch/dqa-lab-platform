@@ -10,3 +10,4 @@ google-genai
 python-multipart
 pandas
 openpyxl
+apscheduler

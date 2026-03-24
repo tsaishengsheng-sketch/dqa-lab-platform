@@ -31,7 +31,7 @@ STATUS_CONFIG = {
 
 
 async def push_message(text: str):
-    """主動推播訊息給指定 User ID (供 main.py 呼叫)"""
+    """主動推播訊息給 env 設定的預設 User ID（供 main.py 緊急通知使用）"""
     token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
     user_id = os.getenv("LINE_USER_ID", "")
 
@@ -57,6 +57,40 @@ async def push_message(text: str):
                 logger.error(f"[LINE] 推播失敗: {res.status_code} {res.text}")
         except Exception as e:
             logger.error(f"[LINE] 推播例外：{e}")
+
+
+async def push_to_user(line_user_id: str, text: str):
+    """推播訊息給指定 LINE User ID（供治具通知使用）"""
+    token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
+
+    if not token:
+        logger.warning("[LINE] 未設定 CHANNEL_ACCESS_TOKEN，跳過推播")
+        return
+    if not line_user_id:
+        logger.warning("[LINE] push_to_user: line_user_id 為空，跳過")
+        return
+
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.post(
+                PUSH_URL,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "to": line_user_id,
+                    "messages": [{"type": "text", "text": text}],
+                },
+                timeout=10.0,
+            )
+            if res.status_code != 200:
+                logger.error(
+                    f"[LINE] push_to_user 失敗 ({line_user_id}): "
+                    f"{res.status_code} {res.text}"
+                )
+        except Exception as e:
+            logger.error(f"[LINE] push_to_user 例外：{e}")
 
 
 def _verify_signature(body: bytes, signature: str) -> bool:

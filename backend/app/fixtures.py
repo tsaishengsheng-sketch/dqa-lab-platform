@@ -1,7 +1,8 @@
+import asyncio
 import datetime
 import io
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Request
 from pydantic import BaseModel
 from .models import SessionLocal, Fixture, FixtureLoan, PurchaseOrder, User
 
@@ -27,6 +28,7 @@ class FixtureOut(BaseModel):
     replacement_years: Optional[str]
     note: Optional[str]
     keeper_name: Optional[str]
+    keeper_user_id: Optional[int]
     deputy_name: Optional[str]
     vendor: Optional[str]
     model_number: Optional[str]
@@ -41,10 +43,15 @@ class FixtureOut(BaseModel):
 class LoanCreate(BaseModel):
     fixture_id: int
     borrower_name: str
+    borrower_user_id: Optional[int] = None
     device_id: Optional[str] = None
     project_name: Optional[str] = None
     quantity: int = 1
     due_date: Optional[datetime.datetime] = None
+
+
+class SetKeeperBody(BaseModel):
+    keeper_user_id: Optional[int] = None
 
 
 class LoanOut(BaseModel):
@@ -116,6 +123,7 @@ def _fixture_to_out(db, f: Fixture) -> dict:
         "replacement_years": f.replacement_years,
         "note": f.note,
         "keeper_name": f.keeper_name,
+        "keeper_user_id": f.keeper_user_id,
         "deputy_name": f.deputy_name,
         "vendor": f.vendor,
         "model_number": f.model_number,
@@ -327,7 +335,9 @@ def list_overdue_loans():
 
 
 @router.post("/loans")
-def create_loan(body: LoanCreate):
+async def create_loan(body: LoanCreate):
+    from .fixture_notifications import notify_loan_created
+
     db = SessionLocal()
     try:
         f = db.query(Fixture).filter(Fixture.id == body.fixture_id).first()
@@ -345,6 +355,7 @@ def create_loan(body: LoanCreate):
         loan = FixtureLoan(
             fixture_id=body.fixture_id,
             borrower_name=body.borrower_name,
+            borrower_user_id=body.borrower_user_id,
             device_id=body.device_id,
             project_name=body.project_name,
             quantity=body.quantity,
@@ -356,7 +367,9 @@ def create_loan(body: LoanCreate):
         f.loan_count += 1
         db.commit()
         db.refresh(loan)
-        return {"status": "success", "loan_id": loan.id}
+        loan_id = loan.id
+        asyncio.create_task(notify_loan_created(loan_id))
+        return {"status": "success", "loan_id": loan_id}
     finally:
         db.close()
 
@@ -494,6 +507,62 @@ async def import_fixtures(file: UploadFile = File(...)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+# ---------- 使用者清單（供借用人下拉選單）----------
+
+
+@router.get("/users")
+def list_users(request: Request):
+    """回傳使用者清單，僅限 keeper/admin（供借出登記下拉選單用）"""
+    role = getattr(request.state, "user_role", None)
+    if role not in ("admin", "keeper"):
+        raise HTTPException(status_code=403, detail="需要保管人或管理者權限")
+    db = SessionLocal()
+    try:
+        users = (
+            db.query(User)
+            .filter(User.is_active == True)
+            .order_by(User.display_name.asc())
+            .all()
+        )
+        return [
+            {"id": u.id, "display_name": u.display_name, "role": u.role}
+            for u in users
+        ]
+    finally:
+        db.close()
+
+
+# ---------- 設定保管人 ----------
+
+
+@router.patch("/{fixture_id}/keeper")
+def set_keeper(fixture_id: int, body: SetKeeperBody, request: Request):
+    """設定治具的系統保管人（keeper/admin only）"""
+    role = getattr(request.state, "user_role", None)
+    if role not in ("admin", "keeper"):
+        raise HTTPException(status_code=403, detail="需要保管人或管理者權限")
+    db = SessionLocal()
+    try:
+        f = db.query(Fixture).filter(Fixture.id == fixture_id).first()
+        if not f:
+            raise HTTPException(status_code=404, detail="治具不存在")
+
+        f.keeper_user_id = body.keeper_user_id
+
+        # 同步更新 keeper_name（方便顯示，不需要 join）
+        if body.keeper_user_id:
+            u = db.query(User).filter(User.id == body.keeper_user_id).first()
+            if u:
+                f.keeper_name = u.display_name
+        else:
+            f.keeper_name = None
+
+        db.commit()
+        return {"status": "success"}
     finally:
         db.close()
 

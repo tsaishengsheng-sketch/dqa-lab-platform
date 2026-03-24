@@ -70,6 +70,9 @@ class Fixture(Base):
     replacement_years: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     keeper_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    keeper_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
     deputy_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     vendor: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     model_number: Mapped[Optional[str]] = mapped_column(String, nullable=True)
