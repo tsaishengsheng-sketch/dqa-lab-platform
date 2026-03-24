@@ -4,7 +4,7 @@ import hashlib
 import secrets
 import datetime
 from typing import Optional
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from .models import SessionLocal, User
@@ -169,6 +169,118 @@ def logout(request: Request):
     if token:
         revoke_token(token)
     return {"ok": True}
+
+
+# ---------- 使用者管理（admin only）----------
+
+def _require_admin(request: Request):
+    role = getattr(request.state, "user_role", None)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="需要管理者權限")
+
+
+class UserCreateBody(BaseModel):
+    display_name: str
+    role: str = "engineer"
+    line_user_id: Optional[str] = None
+
+
+class UserUpdateBody(BaseModel):
+    display_name: Optional[str] = None
+    role: Optional[str] = None
+    line_user_id: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@router.get("/api/auth/users")
+def list_users(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        users = db.query(User).order_by(User.created_at.asc()).all()
+        return [
+            {
+                "id": u.id,
+                "display_name": u.display_name,
+                "role": u.role,
+                "line_user_id": u.line_user_id,
+                "is_active": u.is_active,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+            }
+            for u in users
+        ]
+    finally:
+        db.close()
+
+
+@router.post("/api/auth/users", status_code=201)
+def create_user(body: UserCreateBody, request: Request):
+    _require_admin(request)
+    if body.role not in ("admin", "keeper", "engineer"):
+        raise HTTPException(status_code=400, detail="role 必須是 admin / keeper / engineer")
+    db = SessionLocal()
+    try:
+        # username 自動產生，這類使用者不需要登入
+        username = f"user_{secrets.token_hex(4)}"
+        # 密碼設隨機雜湊，無法用於登入
+        dummy_pwd = hash_password(secrets.token_hex(16))
+        user = User(
+            username=username,
+            display_name=body.display_name,
+            hashed_password=dummy_pwd,
+            role=body.role,
+            line_user_id=body.line_user_id or None,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return {"id": user.id, "display_name": user.display_name, "role": user.role}
+    finally:
+        db.close()
+
+
+@router.patch("/api/auth/users/{user_id}")
+def update_user(user_id: int, body: UserUpdateBody, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="使用者不存在")
+        if body.display_name is not None:
+            user.display_name = body.display_name
+        if body.role is not None:
+            if body.role not in ("admin", "keeper", "engineer"):
+                raise HTTPException(status_code=400, detail="role 必須是 admin / keeper / engineer")
+            user.role = body.role
+        if body.line_user_id is not None:
+            user.line_user_id = body.line_user_id or None
+        if body.is_active is not None:
+            user.is_active = body.is_active
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@router.delete("/api/auth/users/{user_id}")
+def delete_user(user_id: int, request: Request):
+    _require_admin(request)
+    # 取得當前登入者 ID，不允許刪除自己
+    current_token = request.headers.get("X-User-Token", "")
+    db = SessionLocal()
+    try:
+        current = db.query(User).filter(User.current_token == current_token).first()
+        if current and current.id == user_id:
+            raise HTTPException(status_code=400, detail="無法刪除自己的帳號")
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="使用者不存在")
+        db.delete(user)
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
 
 
 # ---------- Middleware ----------

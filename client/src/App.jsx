@@ -4,6 +4,7 @@ import SOPPage from "./SOPPage";
 import ErrorLog from "./ErrorLog";
 import AIPage from "./AIPage";
 import FixturePage from "./FixturePage";
+import UsersPage from "./UsersPage";
 import { API_BASE } from "./api";
 import api from "./api";
 
@@ -13,6 +14,7 @@ const PAGES = [
   { key: "/fixtures", label: "治具管理" },
   { key: "/errors", label: "異常看板" },
   { key: "/ai", label: "AI 諮詢" },
+  { key: "/users", label: "人員管理", adminOnly: true },
 ];
 
 const SESSION_DURATION = 8 * 60 * 60 * 1000;
@@ -62,7 +64,7 @@ const NavBar = ({ current, onChange, onLogout, role, displayName }) => (
     >
       DQA Lab
     </span>
-    {PAGES.map(({ key, label }) => {
+    {PAGES.filter(({ adminOnly }) => !adminOnly || role === "admin").map(({ key, label }) => {
       const active = current === key;
       return (
         <button
@@ -561,6 +563,11 @@ function App() {
           }}
         >
           <AIPage />
+        </div>
+        <div
+          style={{ display: page === "/users" ? "block" : "none", height: "100%" }}
+        >
+          <UsersPage active={page === "/users"} />
         </div>
       </main>
     </div>
