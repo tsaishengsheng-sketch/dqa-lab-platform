@@ -297,7 +297,11 @@ function LoanModal({ onClose, onSubmit, fixtures }) {
   const [deviceId, setDeviceId] = useState("");
   const [project, setProject] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [dueDate, setDueDate] = useState("");
+  const [dueDate, setDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().slice(0, 10);
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [users, setUsers] = useState([]);
@@ -623,6 +627,9 @@ function SetKeeperModal({ fixture, onClose, onSubmit }) {
 function ReturnModal({ loan, onClose, onSubmit }) {
   const [condition, setCondition] = useState("normal");
   const [note, setNote] = useState("");
+  const [returnDate, setReturnDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
@@ -631,6 +638,7 @@ function ReturnModal({ loan, onClose, onSubmit }) {
       await api.post(`/api/fixtures/loans/${loan.id}/return`, {
         return_condition: condition,
         keeper_note: note || null,
+        returned_at: returnDate,
       });
       onSubmit();
     } finally {
@@ -704,6 +712,26 @@ function ReturnModal({ loan, onClose, onSubmit }) {
               {l}
             </button>
           ))}
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: "#8b949e", marginBottom: 4 }}>
+            實際歸還日期
+          </div>
+          <input
+            type="date"
+            value={returnDate}
+            onChange={(e) => setReturnDate(e.target.value)}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 6,
+              border: "1px solid #30363d",
+              background: "#0d1117",
+              color: "#cdd9e5",
+              fontSize: 13,
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          />
         </div>
         <textarea
           placeholder="備註（選填）"

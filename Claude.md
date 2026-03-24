@@ -4,7 +4,7 @@
 
 ---
 
-## 當前狀態快照（2026-03-24）
+## 當前狀態快照（2026-03-24，v4）
 
 ### 開發環境
 
@@ -25,7 +25,7 @@ API 文件：http://localhost:8000/docs
 | 異常紀錄 | ✅ | EMERGENCY 防重複、記錄步驟進度、limit 500 |
 | RAG 知識庫 | ✅ | Gemini Embedding、in-memory、快取自動失效重建、query cache |
 | AI 諮詢 | ✅ | 串流、Gemini 2.5 Flash-Lite、多輪對話、debounce 存檔、focus 競爭修正 |
-| LINE Bot | ✅ | 推播、Flex Message、Quick Replies、共用 AsyncClient |
+| LINE Bot | ✅ | 推播、Flex Message、Quick Replies、共用 AsyncClient、push_to_user（個人推播）|
 | 存取控制 | ✅ | X-Demo-Password、IP Rate Limiting（maxsize 清理）、8h session、CORS |
 | 儀表板 | ✅ | 六狀態、趨勢圖、倒數計時、skeleton loading、時間格式化、執行紀錄顯示測試名稱 |
 | 登入頁 | ✅ | offline fallback、不顯示密碼明文、role 存 localStorage、三層權限切換 |
@@ -33,8 +33,37 @@ API 文件：http://localhost:8000/docs
 | 執行紀錄 | ✅ | 顯示 sop_name、CSV 下載帶 auth header |
 | AI 對話 | ✅ | 標題截斷、空分組保留、閉包修正、折疊偵測、textarea 高度重置、modelBadge 修正 |
 | 治具管理（核心） | ✅ | 治具總表、借出中、逾期未還、借出登記 Modal、歸還 Modal、Summary 卡片、搜尋篩選、role 權限控制 |
-| 治具管理（後端） | ✅ | fixtures / fixture_loans / users / purchase_orders DB 建立、list/summary/loans/overdue/import/inventory 全 API 完成、8 筆初始資料 |
+| 治具管理（後端） | ✅ | fixtures.keeper_user_id 新欄位、PATCH /{id}/keeper、GET /users、LoanCreate 帶 borrower_user_id |
 | Excel 匯入 UI | ✅ | 上傳按鈕、FormData POST、成功/失敗筆數預覽、完成後 fetchAll |
+| LINE Bot 治具通知（後端） | ✅ | fixture_notifications.py、APScheduler、POST /loans 即時推播 |
+| LINE Bot 治具通知（前端） | ✅ | LoanModal 借用人下拉✅、SetKeeperModal✅、表格觸發按鈕✅、月盤點實際數量欄位✅ |
+| 人員管理（UsersPage） | ✅ | admin only、工程師名冊新增/編輯/停用/刪除、LINE User ID 綁定、mock user（無法登入）|
+
+### 本輪新增 API
+
+| 端點 | 說明 |
+|------|------|
+| `GET /api/fixtures/users` | 使用者清單（任意已認證用戶，供借用人下拉選單）|
+| `PATCH /api/fixtures/{id}/keeper` | 設定治具系統保管人（keeper/admin only）|
+| `GET /api/auth/users` | 使用者名冊列表（admin only）|
+| `POST /api/auth/users` | 新增 mock user（admin only，auto-gen username，random password）|
+| `PATCH /api/auth/users/{id}` | 修改 display_name / role / line_user_id / is_active（admin only）|
+| `DELETE /api/auth/users/{id}` | 刪除使用者，不可刪自己（admin only）|
+
+### 本輪 DB 異動
+
+- `fixtures` 表新增 `keeper_user_id INTEGER REFERENCES users(id)`（已執行 ALTER TABLE）
+- `FixtureLoan.borrower_user_id` 欄位原已存在，LoanCreate schema 補上 optional 欄位
+- 已手動插入 4 筆 demo 工程師（王大明、李小花、陳志遠、林怡君）
+
+### 依賴異動
+
+- `requirements.txt` 新增 `apscheduler`（需執行 `make install`）
+
+### 已修 Bug
+
+- `GET /api/fixtures/users` 422 錯誤：FastAPI 路由順序問題，`/users` 被 `/{fixture_id:int}` 搶先匹配，將 `/users` 移到 `/{fixture_id}` 前修復
+- AI 諮詢頁「連線失敗」：`useAIChat.jsx` 的 `getAuthHeaders()` 未讀 `user_token`，只讀 `demo_password`，修正優先順序
 
 ---
 
@@ -43,9 +72,9 @@ API 文件：http://localhost:8000/docs
 ### 現階段目標：治具模組全收尾 → Auth 升級完整版
 
 ```
-[1] LINE Bot 治具通知   P1  ← 下一個開工
-[2] 月盤點 UI          P2
-[3] Auth 升級完整版    P1
+[1] LINE Bot 治具通知   P1  ✅ 全部完成
+[2] 月盤點 UI          P2  ✅ 前後端均完成
+[3] Auth 升級完整版    P1  ← 下一個（現行 role 僅存 localStorage，無後端驗證）
 [4] 採購清單           P2
 [5] 汰換提醒           P3
 ─────────────────────────────────────────
@@ -53,11 +82,24 @@ API 文件：http://localhost:8000/docs
 [後續] 排程系統（甘特圖 + 自動時長計算）
 ```
 
+### [1] LINE Bot 治具通知 — 剩餘工項
+
+```
+後端：✅ 全部完成
+  [1a] fixture_notifications.py（借出即時通知 + 每日 08:00 掃描 + 月盤點提醒）✅
+  [1b] main.py lifespan 加入 APScheduler（每日08:00 + 每月1日08:00）✅
+  [1c] fixtures.py POST /loans 觸發即時通知（asyncio.create_task）✅
+前端（下次繼續）：
+  [1d] LoanModal 借用人改下拉選單（GET /api/fixtures/users）✅
+  [1e] 治具總表新增「設定保管人」按鈕（SetKeeperModal 元件已建，需接觸發邏輯）❌
+  [1f] 月盤點「實際數量」可編輯欄位（POST /api/fixtures/{id}/inventory）❌
+```
+
 ---
 
 ### [1] LINE Bot 治具通知（P1）
 
-**狀態：❌ 未開始**
+**狀態：🔄 進行中（後端完成，前端剩 [1e][1f]）**
 
 #### 後端實作重點
 

@@ -77,6 +77,7 @@ class LoanOut(BaseModel):
 class ReturnUpdate(BaseModel):
     return_condition: str  # normal / damaged / lost
     keeper_note: Optional[str] = None
+    returned_at: Optional[str] = None  # YYYY-MM-DD，不填則用當下時間
 
 
 class ExtensionRequest(BaseModel):
@@ -406,7 +407,14 @@ def return_loan(loan_id: int, body: ReturnUpdate):
         if loan.status not in ("loaned", "reserved"):
             raise HTTPException(status_code=400, detail="此紀錄已結束")
 
-        loan.return_date = datetime.datetime.now(datetime.timezone.utc)
+        if body.returned_at:
+            try:
+                d = datetime.date.fromisoformat(body.returned_at)
+                loan.return_date = datetime.datetime(d.year, d.month, d.day, tzinfo=datetime.timezone.utc)
+            except ValueError:
+                loan.return_date = datetime.datetime.now(datetime.timezone.utc)
+        else:
+            loan.return_date = datetime.datetime.now(datetime.timezone.utc)
         loan.return_condition = body.return_condition
         loan.keeper_note = body.keeper_note
 
