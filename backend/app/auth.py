@@ -542,7 +542,11 @@ async def auth_middleware(request: Request, call_next):
             request.state.user_id = None
             tracker["count"] = 0
             return await call_next(request)
+        # Token 格式存在但已失效（過期/耗盡/停用）→ 直接 401，不計入失敗次數
+        # 避免合法的已過期 session 持續輪詢時封鎖 IP
+        return JSONResponse(status_code=401, content={"detail": "Token 已失效，請重新登入"})
 
+    # 完全未提供任何憑證 → 計入失敗次數（防暴力掃描）
     tracker["count"] += 1
     if tracker["count"] >= MAX_ATTEMPTS:
         tracker["blocked_until"] = now + BLOCK_SECONDS
@@ -551,4 +555,4 @@ async def auth_middleware(request: Request, call_next):
             status_code=429, content={"detail": "錯誤次數過多，封鎖 10 分鐘"}
         )
 
-    return JSONResponse(status_code=401, content={"detail": "密碼錯誤"})
+    return JSONResponse(status_code=401, content={"detail": "未提供認證"})
