@@ -807,22 +807,27 @@ export default function FixturePage({ active, role }) {
   const [keeperTarget, setKeeperTarget] = useState(null);
   const [inventoryEdits, setInventoryEdits] = useState({});
   const [loading, setLoading] = useState(false);
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [purchasePreFill, setPurchasePreFill] = useState(null);
   const canOperate = role === "admin" || role === "keeper";
 
   const fetchAll = useCallback(async () => {
     if (!active) return;
     setLoading(true);
     try {
-      const [fRes, sRes, lRes, iRes] = await Promise.all([
+      const [fRes, sRes, lRes, iRes, poRes] = await Promise.all([
         api.get("/api/fixtures/"),
         api.get("/api/fixtures/summary"),
         api.get("/api/fixtures/loans/active"),
         api.get("/api/fixtures/interface-types"),
+        api.get("/api/purchase-orders"),
       ]);
       setFixtures(fRes.data);
       setSummary(sRes.data);
       setActiveLoans(lRes.data);
       setInterfaceTypes(iRes.data);
+      setPurchaseOrders(poRes.data);
     } catch (e) {
       console.error(e);
     } finally {
@@ -995,6 +1000,26 @@ export default function FixturePage({ active, role }) {
               }}
             >
               {summary.overdue}
+            </span>
+          )}
+        </button>
+        <button
+          style={tabStyle("purchase")}
+          onClick={() => setActiveTab("purchase")}
+        >
+          採購清單
+          {purchaseOrders.filter((o) => o.status === "pending").length > 0 && (
+            <span
+              style={{
+                marginLeft: 4,
+                background: "#f0a50022",
+                color: "#f0a500",
+                borderRadius: 10,
+                padding: "0 6px",
+                fontSize: 11,
+              }}
+            >
+              {purchaseOrders.filter((o) => o.status === "pending").length}
             </span>
           )}
         </button>
@@ -1208,21 +1233,43 @@ export default function FixturePage({ active, role }) {
                       </td>
                       {canOperate && (
                         <td style={tdStyle}>
-                          <button
-                            onClick={() => setKeeperTarget(f)}
-                            style={{
-                              padding: "3px 10px",
-                              borderRadius: 4,
-                              border: "1px solid #30363d",
-                              background: "transparent",
-                              color: "#8b949e",
-                              fontSize: 11,
-                              cursor: "pointer",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            設定保管人
-                          </button>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button
+                              onClick={() => setKeeperTarget(f)}
+                              style={{
+                                padding: "3px 10px",
+                                borderRadius: 4,
+                                border: "1px solid #30363d",
+                                background: "transparent",
+                                color: "#8b949e",
+                                fontSize: 11,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              設定保管人
+                            </button>
+                            {f.available_quantity === 0 && (
+                              <button
+                                onClick={() => {
+                                  setPurchasePreFill(f);
+                                  setShowPurchaseModal(true);
+                                }}
+                                style={{
+                                  padding: "3px 10px",
+                                  borderRadius: 4,
+                                  border: "1px solid #f0a500",
+                                  background: "transparent",
+                                  color: "#f0a500",
+                                  fontSize: 11,
+                                  cursor: "pointer",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                採購
+                              </button>
+                            )}
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -1353,6 +1400,17 @@ export default function FixturePage({ active, role }) {
         />
       )}
 
+      {activeTab === "purchase" && (
+        <PurchaseTab
+          orders={purchaseOrders}
+          fixtures={fixtures}
+          canOperate={canOperate}
+          role={role}
+          onRefresh={fetchAll}
+          onNew={() => { setPurchasePreFill(null); setShowPurchaseModal(true); }}
+        />
+      )}
+
       {showImportModal && (
         <ImportModal
           onClose={() => setShowImportModal(false)}
@@ -1385,6 +1443,18 @@ export default function FixturePage({ active, role }) {
           onClose={() => setKeeperTarget(null)}
           onSubmit={() => {
             setKeeperTarget(null);
+            fetchAll();
+          }}
+        />
+      )}
+      {showPurchaseModal && (
+        <CreatePurchaseModal
+          fixtures={fixtures}
+          preFill={purchasePreFill}
+          onClose={() => { setShowPurchaseModal(false); setPurchasePreFill(null); }}
+          onSubmit={() => {
+            setShowPurchaseModal(false);
+            setPurchasePreFill(null);
             fetchAll();
           }}
         />
@@ -1505,6 +1575,372 @@ function OverdueList({ canOperate, onReturn }) {
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ── 採購清單 tab ────────────────────────────────────────────
+const PO_STATUS = {
+  pending:   { label: "待採購", color: "#f0a500", bg: "#2d2200" },
+  arrived:   { label: "已到貨", color: "#3fb950", bg: "#1a2d1a" },
+  cancelled: { label: "已取消", color: "#8b949e", bg: "#21262d" },
+};
+
+function PurchaseTab({ orders, fixtures, canOperate, role, onRefresh, onNew }) {
+  const [loading, setLoading] = useState(false);
+
+  const handleArrive = async (order) => {
+    setLoading(true);
+    try {
+      await api.patch(`/api/purchase-orders/${order.id}`, { status: "arrived" });
+      onRefresh();
+    } catch (e) {
+      console.error("到貨確認失敗", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (order) => {
+    if (!window.confirm(`確認刪除此採購單？`)) return;
+    setLoading(true);
+    try {
+      await api.delete(`/api/purchase-orders/${order.id}`);
+      onRefresh();
+    } catch (e) {
+      alert(e.response?.data?.detail || "刪除失敗");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const thStyle = {
+    padding: "8px 12px",
+    fontSize: 11,
+    color: "#8b949e",
+    fontWeight: 600,
+    textAlign: "left",
+    borderBottom: "1px solid #21262d",
+    whiteSpace: "nowrap",
+  };
+  const tdStyle = {
+    padding: "9px 12px",
+    fontSize: 13,
+    color: "#cdd9e5",
+    borderBottom: "1px solid #21262d",
+  };
+
+  return (
+    <>
+      {canOperate && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <button
+            onClick={onNew}
+            style={{
+              padding: "6px 16px",
+              borderRadius: 6,
+              background: "#1f4a1f",
+              color: "#3fb950",
+              border: "1px solid #238636",
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            + 新增採購單
+          </button>
+        </div>
+      )}
+      <div
+        style={{
+          background: "#161b22",
+          border: "1px solid #30363d",
+          borderRadius: 8,
+          overflow: "hidden",
+        }}
+      >
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: "#21262d" }}>
+              <th style={thStyle}>治具</th>
+              <th style={thStyle}>數量</th>
+              <th style={thStyle}>廠商</th>
+              <th style={thStyle}>單價</th>
+              <th style={thStyle}>狀態</th>
+              <th style={thStyle}>建立日期</th>
+              <th style={thStyle}>到貨日期</th>
+              <th style={thStyle}>備註</th>
+              {canOperate && <th style={thStyle}>操作</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {orders.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={canOperate ? 9 : 8}
+                  style={{ ...tdStyle, textAlign: "center", color: "#8b949e" }}
+                >
+                  目前無採購紀錄
+                </td>
+              </tr>
+            ) : (
+              orders.map((o) => {
+                const st = PO_STATUS[o.status] || PO_STATUS.pending;
+                return (
+                  <tr key={o.id}>
+                    <td style={{ ...tdStyle, color: "#58a6ff" }}>{o.fixture_label}</td>
+                    <td style={tdStyle}>{o.quantity}</td>
+                    <td style={{ ...tdStyle, color: "#8b949e" }}>{o.vendor || "—"}</td>
+                    <td style={{ ...tdStyle, color: "#8b949e" }}>
+                      {o.unit_price != null ? `$${o.unit_price}` : "—"}
+                    </td>
+                    <td style={tdStyle}>
+                      <span
+                        style={{
+                          background: st.bg,
+                          color: st.color,
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {st.label}
+                      </span>
+                    </td>
+                    <td style={{ ...tdStyle, color: "#8b949e" }}>
+                      {o.created_at ? o.created_at.slice(0, 10) : "—"}
+                    </td>
+                    <td style={{ ...tdStyle, color: o.arrived_at ? "#3fb950" : "#8b949e" }}>
+                      {o.arrived_at ? o.arrived_at.slice(0, 10) : "—"}
+                    </td>
+                    <td style={{ ...tdStyle, color: "#8b949e", maxWidth: 160, wordBreak: "break-all" }}>
+                      {o.note || "—"}
+                    </td>
+                    {canOperate && (
+                      <td style={tdStyle}>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          {o.status === "pending" && (
+                            <button
+                              onClick={() => handleArrive(o)}
+                              disabled={loading}
+                              style={{
+                                padding: "3px 8px",
+                                borderRadius: 4,
+                                background: "#1a2d1a",
+                                color: "#3fb950",
+                                border: "1px solid #238636",
+                                cursor: "pointer",
+                                fontSize: 11,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              確認到貨
+                            </button>
+                          )}
+                          {o.status === "pending" && role === "admin" && (
+                            <button
+                              onClick={() => handleDelete(o)}
+                              disabled={loading}
+                              style={{
+                                padding: "3px 8px",
+                                borderRadius: 4,
+                                background: "transparent",
+                                color: "#f85149",
+                                border: "1px solid #f85149",
+                                cursor: "pointer",
+                                fontSize: 11,
+                              }}
+                            >
+                              刪除
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ── 新增採購單 Modal ────────────────────────────────────────
+function CreatePurchaseModal({ fixtures, preFill, onClose, onSubmit }) {
+  const [fixtureId, setFixtureId] = useState(preFill ? String(preFill.id) : "");
+  const [quantity, setQuantity] = useState(preFill ? String(preFill.shortage || 1) : "1");
+  const [vendor, setVendor] = useState("");
+  const [unitPrice, setUnitPrice] = useState("");
+  const [note, setNote] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async () => {
+    if (!fixtureId) { setError("請選擇治具"); return; }
+    const qty = parseInt(quantity);
+    if (!qty || qty <= 0) { setError("數量需大於 0"); return; }
+    setLoading(true);
+    setError("");
+    try {
+      await api.post("/api/purchase-orders/", {
+        fixture_id: parseInt(fixtureId),
+        quantity: qty,
+        vendor: vendor || null,
+        unit_price: unitPrice ? parseFloat(unitPrice) : null,
+        note: note || null,
+      });
+      onSubmit();
+    } catch (e) {
+      setError(e.response?.data?.detail || "新增失敗");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inputStyle = {
+    width: "100%",
+    padding: "8px 10px",
+    borderRadius: 6,
+    border: "1px solid #30363d",
+    background: "#0d1117",
+    color: "#cdd9e5",
+    fontSize: 13,
+    boxSizing: "border-box",
+  };
+  const labelStyle = { fontSize: 12, color: "#8b949e", marginBottom: 4 };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 2000,
+      }}
+    >
+      <div
+        style={{
+          background: "#161b22",
+          border: "1px solid #30363d",
+          borderRadius: 12,
+          padding: 24,
+          width: 420,
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+        }}
+      >
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#cdd9e5" }}>
+          新增採購單
+        </div>
+
+        <div>
+          <div style={labelStyle}>治具 *</div>
+          <select
+            value={fixtureId}
+            onChange={(e) => setFixtureId(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="">請選擇治具</option>
+            {fixtures.map((f) => (
+              <option key={f.id} value={String(f.id)}>
+                {f.interface_type} / {f.form_factor}
+                {f.size ? ` (${f.size})` : ""}
+                {" — "}可借 {f.available_quantity}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <div style={labelStyle}>採購數量 *</div>
+          <input
+            type="number"
+            min={1}
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <div style={labelStyle}>廠商（選填）</div>
+          <input
+            type="text"
+            value={vendor}
+            onChange={(e) => setVendor(e.target.value)}
+            placeholder="廠商名稱"
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <div style={labelStyle}>單價（選填）</div>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={unitPrice}
+            onChange={(e) => setUnitPrice(e.target.value)}
+            placeholder="0.00"
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <div style={labelStyle}>備註（選填）</div>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="例：急需、替換損壞品..."
+            style={inputStyle}
+          />
+        </div>
+
+        {error && <div style={{ color: "#f85149", fontSize: 12 }}>{error}</div>}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "7px 18px",
+              borderRadius: 6,
+              border: "1px solid #30363d",
+              background: "transparent",
+              color: "#8b949e",
+              cursor: "pointer",
+              fontSize: 13,
+            }}
+          >
+            取消
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            style={{
+              padding: "7px 18px",
+              borderRadius: 6,
+              border: "none",
+              background: "#238636",
+              color: "#fff",
+              cursor: loading ? "not-allowed" : "pointer",
+              fontSize: 13,
+              fontWeight: 600,
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? "送出中..." : "建立採購單"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

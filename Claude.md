@@ -4,7 +4,7 @@
 
 ---
 
-## 當前狀態快照（2026-03-24，v5）
+## 當前狀態快照（2026-03-24，v6）
 
 ### 開發環境
 
@@ -39,6 +39,7 @@ API 文件：http://localhost:8000/docs
 | LINE Bot 治具通知（前端） | ✅ | LoanModal 借用人下拉✅、SetKeeperModal✅、表格觸發按鈕✅、月盤點實際數量欄位✅ |
 | 人員管理（UsersPage） | ✅ | admin only、工程師名冊新增/編輯/停用/刪除、LINE User ID 綁定、mock user（無法登入）|
 | Auth 升級（/api/auth/me） | ✅ | GET /me 從後端回傳真實 role、App 啟動時刷新、防 localStorage 竄改 |
+| 採購清單 | ✅ | 採購清單 tab、新增採購單 Modal、快速採購按鈕（缺貨行）、確認到貨自動累加庫存、admin 刪除 |
 
 ### 本輪新增 API
 
@@ -51,6 +52,10 @@ API 文件：http://localhost:8000/docs
 | `PATCH /api/auth/users/{id}` | 修改 display_name / role / line_user_id / is_active（admin only）|
 | `DELETE /api/auth/users/{id}` | 刪除使用者，不可刪自己（admin only）|
 | `GET /api/auth/me` | 回傳當前登入者 id / display_name / role / line_user_id |
+| `GET /api/purchase-orders` | 採購清單（可用 ?status= 篩選）|
+| `POST /api/purchase-orders` | 新增採購單（keeper/admin only）|
+| `PATCH /api/purchase-orders/{id}` | 更新採購單；status=arrived 自動累加庫存（keeper/admin only）|
+| `DELETE /api/purchase-orders/{id}` | 刪除 pending 採購單（admin only）|
 
 ### 本輪 DB 異動
 
@@ -77,7 +82,7 @@ API 文件：http://localhost:8000/docs
 [1] LINE Bot 治具通知   P1  ✅ 全部完成
 [2] 月盤點 UI          P2  ✅ 前後端均完成
 [3] Auth 升級完整版    P1  ✅ /api/auth/me 完成，role 從後端驗證
-[4] 採購清單           P2
+[4] 採購清單           P2  ✅ 後端 CRUD + 前端 tab + 快速採購按鈕 + 到貨累加庫存
 [5] 汰換提醒           P3
 ─────────────────────────────────────────
 [後續] 前端大改版（控制中心 UI）
@@ -169,20 +174,10 @@ API 文件：http://localhost:8000/docs
 
 ### [4] 採購清單（P2）
 
-**狀態：❌ 未開始（DB `purchase_orders` 表已建立）**
+**狀態：✅ 完成**
 
-#### 後端
-
-| 端點 | 說明 |
-|------|------|
-| `GET /api/purchase-orders` | 採購清單列表 |
-| `POST /api/purchase-orders` | 手動新增 / 從缺貨自動產生 |
-| `PATCH /api/purchase-orders/{id}` | 到貨入庫，更新 `fixtures.quantity` |
-
-#### 前端
-
-- 治具總表「可借數量 = 0」自動標記缺貨，一鍵產生採購單
-- 採購清單頁：顯示待採購 / 已到貨狀態，到貨後更新庫存
+- 後端 `purchase_orders.py`：GET/POST/PATCH/DELETE 全部完成
+- 前端：採購清單 tab、新增採購單 Modal、缺貨行「採購」快捷按鈕、確認到貨自動累加庫存
 
 ---
 
