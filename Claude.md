@@ -4,7 +4,7 @@
 
 ---
 
-## 當前狀態快照（2026-03-25，v9）
+## 當前狀態快照（2026-03-25，v10）
 
 ### 開發環境
 
@@ -44,6 +44,8 @@ API 文件：http://localhost:8000/docs
 | 前端大改版（控制中心） | ✅ | 三欄佈局、TopBar 摘要列、LeftPanel 設備卡片、CenterPanel tab 切換、RightPanel AI 側欄 |
 | 控制中心 UI 修正 | ✅ | 設備選擇器去重、LeftPanel 紀錄連結接通、SOPPage 嵌入模式、右欄加寬 300px |
 | RightPanel AI 對話管理 | ✅ | 迷你對話切換列（‹/›箭頭 + 計數）、新增對話 + 清除按鈕、ChatArea 滾動修正、串流 rAF 節流 |
+| 訪客 Token 管理 | ✅ | DemoToken DB 表格、admin CRUD UI（UsersPage）、POST /api/auth/demo-login 登入端點、use_count 僅登入時遞增、rate limiter 修正 |
+| 訪客模式功能開放 | ✅ | AI 諮詢全開放、治具/排程唯讀（canOperate=false）、設備狀態同步修復 |
 
 ### 本輪新增 API
 
@@ -60,12 +62,18 @@ API 文件：http://localhost:8000/docs
 | `POST /api/purchase-orders` | 新增採購單（keeper/admin only）|
 | `PATCH /api/purchase-orders/{id}` | 更新採購單；status=arrived 自動累加庫存（keeper/admin only）|
 | `DELETE /api/purchase-orders/{id}` | 刪除 pending 採購單（admin only）|
+| `POST /api/auth/demo-login` | 訪客 Token 登入（驗證並遞增 use_count 一次，無需預先認證）|
+| `GET /api/auth/demo-tokens` | 訪客 Token 列表（admin only）|
+| `POST /api/auth/demo-tokens` | 生成訪客 Token（admin only，可設期限 / 最大使用次數）|
+| `DELETE /api/auth/demo-tokens/{id}` | 刪除訪客 Token（admin only）|
+| `PATCH /api/auth/demo-tokens/{id}/toggle` | 啟用 / 停用訪客 Token（admin only）|
 
 ### 本輪 DB 異動
 
 - `fixtures` 表新增 `keeper_user_id INTEGER REFERENCES users(id)`（已執行 ALTER TABLE）
 - `FixtureLoan.borrower_user_id` 欄位原已存在，LoanCreate schema 補上 optional 欄位
 - 已手動插入 4 筆 demo 工程師（王大明、李小花、陳志遠、林怡君）
+- `demo_tokens` 新表格（Base.metadata.create_all 啟動時自動建立，無需手動 migration）
 
 ### 依賴異動
 
@@ -82,6 +90,12 @@ API 文件：http://localhost:8000/docs
 - LeftPanel 紀錄連結無功能：點「異常紀錄」/「執行紀錄」無反應；修正：加 `onSwitchTab` prop，切換 CenterPanel 至 errors/executions 隱藏 tab；`ControlCenter` 新增 `ExecutionList` inline 元件（fetch `/api/reports/list`，支援 CSV 下載）
 - RightPanel ChatArea 無法滾動：wrapper div 不是 flex container，`ChatArea` 的 `flex: 1` 失效，`overflowY: auto` 從未生效；修正：加 `display: flex; flex-direction: column`
 - 串流生成時 UI 凍結：每個 chunk 直接呼叫 `setStreamText()` 觸發高頻 React 重渲；修正：改用 `requestAnimationFrame` 節流，最多每 16ms 更新一次
+- 訪客 Token use_count 每次 request 都耗盡：middleware 呼叫 `_check_demo_token` 遞增，導致 max_uses=2 只要兩個 API call 就封鎖；修正：拆成 `_validate_demo_token`（middleware，不遞增）+ `_use_demo_token`（登入時一次）
+- demo-tokens API 404：`auth.py` router 路徑缺少 `/api/auth/` 前綴，前端打 `/api/auth/demo-tokens` 找不到路由
+- 訪客登出後 IP 被封鎖：過期 token 在 middleware 觸發 rate limiter，多輪輪詢後封鎖 IP；修正：token 存在但失效時直接 401 不計入失敗次數
+- 訪客登入後顯示管理者身份：`handleLogin` 只呼叫 `setAuthed(true)` 未刷新 `role` state；修正：同步呼叫 `setRole(getCurrentRole())`
+- AI 查庫存回傳「查無此資料」：`_query_fixture_context` 存取 `f.loaned_quantity`（非 ORM 欄位），AttributeError 被 except 靜默吃掉；修正：改用 `f.total_quantity` + `f.shortage`
+- AI 回答重複免責聲明：system prompt 要求 AI 自行附加，但 MessageBubble.jsx 已自動加；修正：改告知 AI「UI 會自動附加，不要自行加」
 
 ---
 
@@ -310,14 +324,29 @@ RUNNING/PAUSED → EMERGENCY（防重複觸發）
 idle → ramp_to_low / ramp_to_high → dwell_high → ramp_to_low2 → dwell_low → ramp_to_ambient
 ```
 
-### 存取控制（現有，Auth 升級前）
+### 存取控制（現行）
 
-- Header：`X-Demo-Password`（值來自 `backend/.env` 的 `DEMO_PASSWORD`）
-- 豁免路徑：`/api/line/webhook`、`/docs`、`/openapi.json`、`/api/latest`、`/health`
-- Rate limiting：錯誤 5 次封鎖 IP 10 分鐘，重啟清除
-- Session：`demo_password` + `demo_login_at` + `user_role` 存 localStorage，8 小時後踢出
-- 401 時前端自動清除 session 並跳回登入頁（api.js interceptor）
-- role 值：`guest` / `engineer` / `keeper` / `admin`，`canOperate = role === "admin" || role === "keeper"`
+**雙軌認證：**
+- `X-User-Token`：帳號登入後取得，存 DB（8h TTL，重啟不失效）
+- `X-Demo-Password`：訪客 Token（8 碼），管理者在 UI 生成，支援期限 / 最大使用次數
+
+**訪客 Token 流程：**
+1. 管理者在「人員管理」頁面 → 訪客 Token 管理 生成 Token
+2. 訪客填入 Token → 前端呼叫 `POST /api/auth/demo-login`（use_count +1，僅此一次）
+3. 後續所有 request 帶 `X-Demo-Password` header → middleware 呼叫 `_validate_demo_token`（不遞增 use_count）
+4. Token 失效（過期/耗盡/停用）→ 401，前端自動登出，不計入 rate limiter
+
+**後備 Master Key：** `DEMO_PASSWORD` 環境變數，不設則本機開發跳過驗證
+
+**豁免路徑：** `/api/line/webhook`、`/docs`、`/openapi.json`、`/api/latest`、`/health`、`/api/auth/login`、`/api/auth/demo-login`
+
+**Rate limiting：** 完全未提供憑證的請求 5 次封鎖 IP 10 分鐘（重啟清除）；token 存在但失效不計入
+
+**Session：** `demo_password` + `demo_login_at` + `user_role` 存 localStorage，8 小時後踢出；401 時 axios interceptor 自動清除並跳回登入頁
+
+**role 值：** `guest` / `engineer` / `keeper` / `admin`，`canOperate = role === "admin" || role === "keeper"`
+
+**訪客（guest）可存取：** 設備狀態（唯讀）、AI 諮詢、治具總表（唯讀）、排程（唯讀）；不可操作 SOP 以外的寫入功能
 
 ### CORS
 
@@ -386,6 +415,7 @@ src/
 | `fixtures` | 治具基本資料 | id, interface_type |
 | `fixture_loans` | 借出紀錄（fixture_id, borrower, device, project, 狀態）| id, fixture_id |
 | `users` | 工程師名單（帳號/密碼/LINE ID/權限/token）| id |
+| `demo_tokens` | 訪客 Token（label / expires_at / max_uses / use_count / is_active）| id, token |
 | `sop_templates` | 自訂 SOP 模板（自訂測試流程） | sop_id |
 | `purchase_orders` | 採購紀錄（治具採購流程） | id, fixture_id |
 
@@ -409,18 +439,25 @@ src/
 - **多輪對話**：MAX_HISTORY = 4；localStorage key：`dqa_ai_chats_v2`
 - **輸入**：Enter 送出，Shift+Enter 換行
 
-### Auth 升級規格（未實作，規劃用）
+### Auth 現行規格
 
-| 端點 | 說明 |
-|------|------|
-| `POST /api/auth/login` | 帳號 + 密碼 → JWT |
-| `GET /api/auth/me` | 當前使用者 role / name / line_user_id |
-| `POST /api/auth/users` | admin only，新增帳號 |
-| `PATCH /api/auth/users/{id}` | admin only，修改 role / 停用帳號 |
+| 端點 | 狀態 | 說明 |
+|------|------|------|
+| `POST /api/auth/login` | ✅ | 帳號 + 密碼 → X-User-Token（存 DB）|
+| `POST /api/auth/demo-login` | ✅ | 訪客 Token 驗證（use_count +1）|
+| `GET /api/auth/me` | ✅ | 當前使用者 role / display_name / line_user_id |
+| `GET /api/auth/users` | ✅ | admin only，使用者名冊 |
+| `POST /api/auth/users` | ✅ | admin only，新增帳號（auto-gen username）|
+| `PATCH /api/auth/users/{id}` | ✅ | admin only，修改 role / 停用帳號 |
+| `DELETE /api/auth/users/{id}` | ✅ | admin only，不可刪自己 |
+| `GET /api/auth/demo-tokens` | ✅ | admin only，訪客 Token 列表 |
+| `POST /api/auth/demo-tokens` | ✅ | admin only，生成訪客 Token |
+| `DELETE /api/auth/demo-tokens/{id}` | ✅ | admin only |
+| `PATCH /api/auth/demo-tokens/{id}/toggle` | ✅ | admin only，啟用 / 停用 |
 
-- 推薦套件：`python-jose[cryptography]` + `passlib[bcrypt]`
-- JWT middleware 取代 `X-Demo-Password` header
-- guest 模式保留：demo 密碼換取 guest JWT（role=guest）
+尚未實作（後續規劃）：
+- JWT 完整替換 `X-User-Token` + `X-Demo-Password` 雙 header → 單一 `Authorization: Bearer`
+- `passlib[bcrypt]` 取代 SHA-256 密碼雜湊
 
 ### 三層權限（Auth 升級後）
 
