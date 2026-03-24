@@ -70,12 +70,14 @@ function LoginPage({ onLogin }) {
     setError("");
     setBackendOffline(false);
     try {
-      const res = await fetch(`${API_BASE}/api/devices`, {
-        headers: { "X-Demo-Password": pwdInput },
+      const res = await fetch(`${API_BASE}/api/auth/demo-login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: pwdInput }),
       });
       if (res.status === 401 || res.status === 429) {
         const data = await res.json();
-        setError(data.detail || "密碼錯誤");
+        setError(data.detail || "Token 無效");
       } else {
         localStorage.setItem("demo_password", pwdInput);
         localStorage.setItem("demo_login_at", Date.now().toString());

@@ -23,6 +23,7 @@ SKIP_PATHS = {
     "/api/latest",
     "/health",
     "/api/auth/login",
+    "/api/auth/demo-login",
 }
 MAX_ATTEMPTS = 5
 BLOCK_SECONDS = 600
@@ -323,7 +324,7 @@ def _require_admin(request: Request):
         raise HTTPException(status_code=403, detail="僅管理者可操作")
 
 
-@router.get("/demo-tokens")
+@router.get("/api/auth/demo-tokens")
 def list_demo_tokens(request: Request):
     _require_admin(request)
     db = SessionLocal()
@@ -355,7 +356,7 @@ def list_demo_tokens(request: Request):
         db.close()
 
 
-@router.post("/demo-tokens")
+@router.post("/api/auth/demo-tokens")
 def create_demo_token(req: DemoTokenCreate, request: Request):
     _require_admin(request)
     db = SessionLocal()
@@ -390,7 +391,7 @@ def create_demo_token(req: DemoTokenCreate, request: Request):
         db.close()
 
 
-@router.delete("/demo-tokens/{token_id}")
+@router.delete("/api/auth/demo-tokens/{token_id}")
 def delete_demo_token(token_id: int, request: Request):
     _require_admin(request)
     db = SessionLocal()
@@ -405,7 +406,7 @@ def delete_demo_token(token_id: int, request: Request):
         db.close()
 
 
-@router.patch("/demo-tokens/{token_id}/toggle")
+@router.patch("/api/auth/demo-tokens/{token_id}/toggle")
 def toggle_demo_token(token_id: int, request: Request):
     _require_admin(request)
     db = SessionLocal()
@@ -420,8 +421,30 @@ def toggle_demo_token(token_id: int, request: Request):
         db.close()
 
 
-def _check_demo_token(provided: str) -> bool:
-    """驗證訪客 token，有效則遞增 use_count 並回傳 True。"""
+def _validate_demo_token(provided: str) -> bool:
+    """驗證訪客 token 是否有效（不遞增 use_count，供 middleware 每次 request 呼叫）。"""
+    db = SessionLocal()
+    try:
+        t = db.query(DemoToken).filter(
+            DemoToken.token == provided,
+            DemoToken.is_active == True,
+        ).first()
+        if not t:
+            return False
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if t.expires_at and t.expires_at.replace(tzinfo=datetime.timezone.utc) < now:
+            return False
+        if t.max_uses is not None and t.use_count >= t.max_uses:
+            return False
+        return True
+    except Exception:
+        return False
+    finally:
+        db.close()
+
+
+def _use_demo_token(provided: str) -> bool:
+    """驗證訪客 token 並遞增 use_count（僅在登入時呼叫一次）。"""
     db = SessionLocal()
     try:
         t = db.query(DemoToken).filter(
@@ -442,6 +465,37 @@ def _check_demo_token(provided: str) -> bool:
         return False
     finally:
         db.close()
+
+
+# ---------- 訪客登入端點 ----------
+
+class DemoLoginRequest(BaseModel):
+    token: str
+
+
+@router.post("/api/auth/demo-login")
+def demo_login(body: DemoLoginRequest, request: Request):
+    ip = request.client.host
+    tracker = _get_tracker(ip)
+    now = time.time()
+
+    if tracker["blocked_until"] > now:
+        remaining = int(tracker["blocked_until"] - now)
+        return JSONResponse(
+            status_code=429, content={"detail": f"太多次錯誤，請 {remaining} 秒後再試"}
+        )
+
+    if _use_demo_token(body.token) or (DEMO_PASSWORD and body.token == DEMO_PASSWORD):
+        tracker["count"] = 0
+        return {"ok": True}
+
+    tracker["count"] += 1
+    if tracker["count"] >= MAX_ATTEMPTS:
+        tracker["blocked_until"] = now + BLOCK_SECONDS
+        tracker["count"] = 0
+        return JSONResponse(status_code=429, content={"detail": "錯誤次數過多，封鎖 10 分鐘"})
+
+    return JSONResponse(status_code=401, content={"detail": "Token 無效、已過期或已達使用上限"})
 
 
 # ---------- Middleware ----------
@@ -483,7 +537,7 @@ async def auth_middleware(request: Request, call_next):
     # 優先查 demo_tokens DB；後備：環境變數 DEMO_PASSWORD（master key）
     provided = request.headers.get("X-Demo-Password", "")
     if provided:
-        if _check_demo_token(provided) or (DEMO_PASSWORD and provided == DEMO_PASSWORD):
+        if _validate_demo_token(provided) or (DEMO_PASSWORD and provided == DEMO_PASSWORD):
             request.state.user_role = "guest"
             request.state.user_id = None
             tracker["count"] = 0

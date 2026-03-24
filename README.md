@@ -44,7 +44,7 @@
 工程師名冊維護（新增 / 編輯 / 停用 / 刪除），綁定 LINE User ID 供推播使用。Admin only，工程師帳號無法登入系統，僅作為借用人選單來源。
 
 ### 🔐 三層存取控制
-帳號登入（token 存 DB，重啟不失效）+ 訪客模式（Demo Password）。App 啟動時從後端 `/api/auth/me` 驗證真實 role，防止 localStorage 竄改。IP Rate Limiting：5 次錯誤封鎖 10 分鐘。
+帳號登入（token 存 DB，重啟不失效）+ 訪客 Token（管理者在 UI 生成，可設期限與使用次數上限，取代固定密碼）。App 啟動時從後端 `/api/auth/me` 驗證真實 role，防止 localStorage 竄改。IP Rate Limiting：5 次錯誤封鎖 10 分鐘。
 
 ---
 
@@ -117,7 +117,8 @@ make dev
 複製 `backend/.env.example`，填入必要的變數：
 
 ```bash
-DEMO_PASSWORD=your_password
+# 後備 Master Key（正常情況改用 UI 管理訪客 Token；本機開發可留空）
+DEMO_PASSWORD=your_master_key
 
 # AI 諮詢（可選）
 GEMINI_API_KEY=your_key
@@ -206,7 +207,7 @@ dqa-lab-digital-twin/
 - **SOP 管理**：`POST /api/sop/execute`、`GET /api/sop/{id}/report`
 - **治具管理**：`GET /api/fixtures/`、`POST /api/fixtures/loans`、`POST /api/fixtures/loans/{id}/return`
 - **AI 諮詢**：`POST /api/ai/query`（串流）
-- **Auth**：`POST /api/auth/login`、`GET /api/auth/me`、`GET /api/auth/users`
+- **Auth**：`POST /api/auth/login`、`GET /api/auth/me`、`GET /api/auth/users`、`GET /api/auth/demo-tokens`（訪客 Token 管理）
 - **異常紀錄**：`GET /api/error-logs`
 
 ---
