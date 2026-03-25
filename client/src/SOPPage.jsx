@@ -502,13 +502,17 @@ const SOPPage = ({ active = true, externalDevice }) => {
         },
       });
     } else {
-      newCompleted[stepId] = true;
-      updateDS(selectedDevice, { completedSteps: newCompleted });
-      api
-        .post(`/api/devices/${selectedDevice}/progress`, {
-          completed: Object.values(newCompleted).filter(Boolean).length,
-        })
-        .catch((e) => console.error("[SOPPage] progress:", e));
+      // 用 functional setState 確保讀到最新 completedSteps，避免快速連勾 race condition
+      setDeviceStates((prev) => {
+        const prevDs = prev[selectedDevice];
+        const newComp = { ...prevDs.completedSteps, [stepId]: true };
+        api
+          .post(`/api/devices/${selectedDevice}/progress`, {
+            completed: Object.values(newComp).filter(Boolean).length,
+          })
+          .catch((e) => console.error("[SOPPage] progress:", e));
+        return { ...prev, [selectedDevice]: { ...prevDs, completedSteps: newComp } };
+      });
     }
   };
 
