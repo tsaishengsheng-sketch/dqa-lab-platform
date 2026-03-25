@@ -40,6 +40,7 @@ backend/test.db
 ### 本地開發文檔（不公開）
 docs/private/
 .local/
+Claude.md
 
 ### 前端（Node/Vite）
 node_modules/

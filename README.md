@@ -18,33 +18,33 @@
 2. **設備狀態機 + 物理模擬引擎** — 支援離線驗證，無需實體硬體
 3. **AI 法規助手** — 用自然語言快速檢索與比較標準
 4. **完整追溯記錄** — ISO 17025 格式報告，保證可追溯性
-5. **治具借還管理** — 取代紙本紀錄，LINE Bot 即時通知
-6. **三層權限控管** — 管理者 / 保管人 / 工程師，後端 token 驗證
+5. **治具借還管理** — 取代紙本紀錄，採購閉環、汰換提醒、LINE Bot 即時通知
+6. **四層權限控管** — 管理者 / 保管人 / 工程師 / 訪客，後端 token 驗證
 
 ---
 
 ## 核心功能
 
-### 📊 實時監控儀表板
-多台溫箱設備即時監控，顯示溫濕度、運行狀態、倒數計時。支援雙 Y 軸趨勢圖、六種狀態指示、設備熱切換。
+### 🖥️ 控制中心（三欄佈局）
+TopBar 設備摘要列、LeftPanel 設備卡片與紀錄連結、CenterPanel 多 tab 切換（SOP / 治具 / 異常 / 人員管理）、RightPanel 常駐 AI 側欄（含迷你對話切換列）。多台溫箱設備即時監控，顯示溫濕度、運行狀態、倒數計時，支援雙 Y 軸趨勢圖與六種狀態指示。
 
 ### 🔧 SOP 執行引擎
 三步驟選擇法規 → 版本 → 測試條件，自動載入參數。支援進度持久化、步驟鎖定、SP+PV 波形疊加、ISO 17025 報告下載。
 
 ### 🗄️ 治具借還管理
-治具總表、借出登記、歸還確認（支援補填歸還日期）、逾期追蹤、月盤點回填、Excel 批次匯入。保管人中心制，LINE Bot 推播借用人確認。
+治具總表、借出登記、歸還確認（支援補填歸還日期）、逾期追蹤、月盤點回填、Excel 批次匯入。保管人中心制，LINE Bot 推播借用人確認。採購清單閉環（缺貨警示 → 採購單 → 到貨入庫），汰換提醒（APScheduler 每週推播保管人）。
 
 ### 🤖 AI 法規諮詢
 自然語言查詢「EN 50155 和 IEC 60068 的濕熱循環有什麼差異？」，系統透過 RAG 檢索法規內容、對比參數、推論說明。對話歷史本機儲存，支援多輪上下文。控制中心右欄常駐顯示迷你版，含快速問題按鈕與對話切換（‹/›箭頭 + 新增 / 清除），無需離開設備監控畫面。
 
 ### 🚨 異常與通知
-緊急停止事件自動記錄、步驟進度快照。LINE Bot 推播逾期提醒、借出通知、月盤點提醒。
+緊急停止事件自動記錄、步驟進度快照。LINE Bot 推播逾期提醒、借出通知、月盤點提醒、汰換提醒。
 
 ### 👥 人員管理
 工程師名冊維護（新增 / 編輯 / 停用 / 刪除），綁定 LINE User ID 供推播使用。Admin only，工程師帳號無法登入系統，僅作為借用人選單來源。同頁管理訪客 Token（可設期限與使用次數上限，停用 / 刪除）。
 
-### 🔐 三層存取控制
-帳號登入（token 存 DB，重啟不失效）+ 訪客 Token（管理者在 UI 生成，可設期限與使用次數上限，取代固定密碼）。App 啟動時從後端 `/api/auth/me` 驗證真實 role，防止 localStorage 竄改。IP Rate Limiting：5 次錯誤封鎖 10 分鐘。
+### 🔐 四層存取控制
+帳號登入（token 存 DB，重啟不失效）+ 訪客 Token（管理者在 UI 生成，可設期限與使用次數上限，作為主要訪客管理方式，後備 Master Key 仍保留）。App 啟動時從後端 `/api/auth/me` 驗證真實 role，防止 localStorage 竄改。四層角色：管理者 / 保管人 / 工程師 / 訪客。IP Rate Limiting：未提供憑證 5 次封鎖 10 分鐘。
 
 ---
 
@@ -169,14 +169,19 @@ dqa-lab-digital-twin/
 │   └── requirements.txt
 ├── client/
 │   ├── src/
-│   │   ├── ai/                     # AI 諮詢元件（獨立資料夾）
-│   │   ├── components/sop/         # SOP 執行元件（10 個子元件）
-│   │   ├── components/control/     # 控制中心元件（RightPanel AI 側欄）
+│   │   ├── components/
+│   │   │   ├── ai/                 # AI 諮詢元件（ChatArea / ChatSidebar / useAIChat 等）
+│   │   │   ├── sop/                # SOP 執行元件（10 個子元件）
+│   │   │   └── control/            # 控制中心元件（RightPanel AI 側欄）
 │   │   ├── api.js                  # Axios 實例 + 認證攔截器
 │   │   ├── App.jsx                 # Session 管理 → 載入 ControlCenter
 │   │   ├── ControlCenter.jsx       # 三欄主框架（TopBar + LeftPanel + CenterPanel）
+│   │   ├── SOPPage.jsx             # SOP 主頁面
+│   │   ├── ErrorLog.jsx            # 異常紀錄頁
 │   │   ├── FixturePage.jsx         # 治具管理頁
 │   │   ├── UsersPage.jsx           # 人員管理頁（admin only）
+│   │   ├── Dashboard.jsx           # 保留，已不在主 nav 顯示
+│   │   ├── AIPage.jsx              # 保留，已不在主 nav 顯示
 │   │   └── main.jsx
 │   ├── package.json
 │   └── vite.config.js
@@ -205,9 +210,10 @@ dqa-lab-digital-twin/
 主要端點：
 - **設備控制**：`GET /api/devices`、`GET /api/device/{id}/data`
 - **SOP 管理**：`POST /api/sop/execute`、`GET /api/sop/{id}/report`
-- **治具管理**：`GET /api/fixtures/`、`POST /api/fixtures/loans`、`POST /api/fixtures/loans/{id}/return`
+- **治具管理**：`GET /api/fixtures/`、`GET /api/fixtures/summary`、`GET /api/fixtures/loans/active`、`GET /api/fixtures/loans/overdue`、`POST /api/fixtures/loans`、`POST /api/fixtures/loans/{id}/return`、`POST /api/fixtures/loans/{id}/extend`、`POST /api/fixtures/import`、`POST /api/fixtures/{id}/inventory`
+- **採購清單**：`GET /api/purchase_orders`、`POST /api/purchase_orders`、`PATCH /api/purchase_orders/{id}/receive`
 - **AI 諮詢**：`POST /api/ai/query`（串流）
-- **Auth**：`POST /api/auth/login`、`GET /api/auth/me`、`GET /api/auth/users`、`GET /api/auth/demo-tokens`（訪客 Token 管理）
+- **Auth**：`POST /api/auth/login`、`POST /api/auth/demo-login`、`GET /api/auth/me`、`GET /api/auth/users`、`POST /api/auth/users`、`PATCH /api/auth/users/{id}`、`DELETE /api/auth/users/{id}`、`GET /api/auth/demo-tokens`、`POST /api/auth/demo-tokens`、`DELETE /api/auth/demo-tokens/{id}`、`PATCH /api/auth/demo-tokens/{id}/toggle`
 - **異常紀錄**：`GET /api/error-logs`
 
 ---
@@ -247,6 +253,8 @@ make clean        # 清理殘留程序
 - [x] AI 快速按鈕隨機池（16 題隨機抽 4，每次點擊後刷新；訪客每次登入清空對話紀錄）
 - [ ] 排程系統（甘特圖 + 自動時長計算 + 設備衝突檢查）
 - [ ] RS-485 真實設備通訊（Phase 3）
+- [ ] JWT 完整替換（單一 Authorization: Bearer header）
+- [ ] 密碼雜湊升級（passlib bcrypt 取代 SHA-256）
 
 ---
 
