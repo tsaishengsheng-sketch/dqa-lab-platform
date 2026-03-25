@@ -140,6 +140,9 @@ const SOPPage = ({ active = true, externalDevice }) => {
     () => localStorage.getItem("dqa_operator") || "",
   );
   const [confirmModal, setConfirmModal] = useState(null);
+  const [manualMode, setManualMode] = useState(false);
+  const role = localStorage.getItem("user_role") || "guest";
+  const isAdmin = role === "admin";
 
   const historyFetchingRef = useRef(null);
   const lastHistoryMinuteRef = useRef(-1);
@@ -361,7 +364,7 @@ const SOPPage = ({ active = true, externalDevice }) => {
         [selectedDevice]: { ...prev[selectedDevice], completedSteps: newCompleted },
       }));
     }
-  }, [ds.activeSop?.sop_id, selectedDevice]); // eslint-disable-line
+  }, [ds.activeSop?.sop_id, selectedDevice, simPhase]); // eslint-disable-line
 
   useEffect(() => {
     const prevPhase = prevSimPhaseRef.current;
@@ -551,14 +554,51 @@ const SOPPage = ({ active = true, externalDevice }) => {
               className="operation-box"
               style={{ borderLeft: "3px solid #58a6ff" }}
             >
-              <div className="box-header">
-                <span>📋</span>
-                <h2 style={{ fontSize: 13 }}>{ds.activeSop.name}</h2>
+              <div className="box-header" style={{ justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>📋</span>
+                  <h2 style={{ fontSize: 13 }}>{ds.activeSop.name}</h2>
+                </div>
+                {isAdmin && (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      onClick={() => setManualMode((v) => !v)}
+                      title="手動接管模式：解鎖 Auto 步驟，允許手動勾選"
+                      style={{
+                        padding: "3px 8px", fontSize: 10, borderRadius: 4, cursor: "pointer",
+                        background: manualMode ? "#0f2318" : "#21262d",
+                        color: manualMode ? "#57ab5a" : "#8b949e",
+                        border: `1px solid ${manualMode ? "#2d5a3a" : "#30363d"}`,
+                      }}
+                    >
+                      {manualMode ? "🔓 手動中" : "🔒 自動"}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("確定跳至降溫階段？此操作將略過剩餘測試步驟，直接回溫到 25°C。")) return;
+                        try {
+                          await api.post(`/api/devices/${selectedDevice}/set-phase`, { phase: "ramp_to_ambient" });
+                        } catch (e) {
+                          alert(e?.response?.data?.detail || "操作失敗");
+                        }
+                      }}
+                      title="跳至降溫（略過剩餘測試直接回 25°C）"
+                      style={{
+                        padding: "3px 8px", fontSize: 10, borderRadius: 4, cursor: "pointer",
+                        background: "#21262d", color: "#58a6ff",
+                        border: "1px solid #1f6feb",
+                      }}
+                    >
+                      ⏩ 跳至降溫
+                    </button>
+                  </div>
+                )}
               </div>
               <StepList
                 steps={ds.activeSop.steps || []}
                 completedSteps={ds.completedSteps}
                 onToggle={handleToggleStep}
+                manualMode={manualMode}
               />
               {allStepsDone && (
                 <ExecutionPanel

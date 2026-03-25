@@ -140,6 +140,65 @@ def _calc_total_hours(conditions: List[str]) -> float:
     return round(total, 2)
 
 
+def _est_end_from_device(device: dict) -> Optional[datetime.datetime]:
+    """從 AICM_CACHE 設備 dict 估算測試結束時間（UTC）；設備不在執行中則回傳 None"""
+    if device.get("status") not in ("RUNNING", "PAUSED", "FINISHING"):
+        return None
+    started_at = device.get("started_at")
+    active_sop_json = device.get("active_sop_json")
+    if not started_at or not active_sop_json:
+        return None
+    try:
+        sop = json.loads(active_sop_json) if isinstance(active_sop_json, str) else active_sop_json
+    except Exception:
+        return None
+
+    ramp_rate = float(sop.get("ramp_rate") or 1.0)
+    dwell_min = float(sop.get("dwell_time_hours") or 0.0) * 60.0
+    cycles = int(sop.get("cycles") or 1)
+    high_temp = float(sop.get("high_temperature") or sop.get("target_temperature") or 25.0)
+    low_temp = sop.get("low_temperature")
+    ambient = 25.0
+    if ramp_rate <= 0:
+        ramp_rate = 1.0
+
+    if low_temp is not None and float(low_temp) < ambient:
+        low_temp = float(low_temp)
+        r_lo = abs(ambient - low_temp) / ramp_rate
+        r_hl = abs(high_temp - low_temp) / ramp_rate
+        if r_hl < 0.01:
+            total_min = r_lo + dwell_min * cycles + r_lo
+        else:
+            total_min = r_lo + (r_hl + dwell_min + r_hl + dwell_min) * cycles + r_lo
+    elif low_temp is not None:
+        low_temp = float(low_temp)
+        r_up = abs(high_temp - ambient) / ramp_rate
+        r_hl = abs(high_temp - low_temp) / ramp_rate
+        r_dn = abs(low_temp - ambient) / ramp_rate
+        total_min = r_up + (dwell_min * 2 + r_hl * 2) * (cycles - 1) + (dwell_min * 2 + r_hl) + r_dn
+    else:
+        r_up = abs(high_temp - ambient) / ramp_rate
+        total_min = r_up + dwell_min + r_up
+
+    if isinstance(started_at, str):
+        started_dt = datetime.datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+    else:
+        started_dt = started_at
+    if started_dt.tzinfo is None:
+        started_dt = started_dt.replace(tzinfo=datetime.timezone.utc)
+    return started_dt + datetime.timedelta(minutes=total_min)
+
+
+def _build_running_until(cache: dict) -> dict:
+    """從 AICM_CACHE 建立 {device_id: estimated_end} dict，只含正在執行的設備"""
+    result = {}
+    for did, dev in cache.items():
+        est = _est_end_from_device(dev)
+        if est:
+            result[did] = est
+    return result
+
+
 def _get_condition_names(conditions: List[str]) -> List[str]:
     """取得每個 sop_id 的顯示名稱"""
     names = []
@@ -178,11 +237,23 @@ def _enrich(s: Schedule) -> dict:
 # ── 自動排程邏輯 ────────────────────────────────────────────────────────────
 
 
-def _find_earliest_slot(device_id: str, total_hours: float, db) -> datetime.datetime:
+def _find_earliest_slot(
+    device_id: str,
+    total_hours: float,
+    db,
+    running_until: Optional[dict] = None,
+) -> datetime.datetime:
     """找出指定設備的最早可用開始時間（UTC）"""
     now = datetime.datetime.now(datetime.timezone.utc)
 
-    # 找該設備現有已確認/進行中排程的最晚結束時間
+    # 先以設備當前實際執行預估結束時間為下限
+    candidate_start = now
+    if running_until and device_id in running_until:
+        live_end = running_until[device_id]
+        if live_end and live_end > candidate_start:
+            candidate_start = live_end
+
+    # 再找 DB 已確認/進行中排程的最晚結束時間
     existing = (
         db.query(Schedule)
         .filter(
@@ -193,7 +264,6 @@ def _find_earliest_slot(device_id: str, total_hours: float, db) -> datetime.date
         .all()
     )
 
-    candidate_start = now
     for s in existing:
         end = s.end_time
         if end.tzinfo is None:
@@ -224,14 +294,18 @@ def _find_earliest_slot(device_id: str, total_hours: float, db) -> datetime.date
     return candidate_start
 
 
-def _auto_assign(conditions: List[str], db) -> tuple[str, datetime.datetime, datetime.datetime]:
+def _auto_assign(
+    conditions: List[str],
+    db,
+    running_until: Optional[dict] = None,
+) -> tuple[str, datetime.datetime, datetime.datetime]:
     """自動選最早可用設備，回傳 (device_id, start_time, end_time)"""
     total_hours = _calc_total_hours(conditions)
     best_device = None
     best_start = None
 
     for device_id in DEVICE_IDS:
-        start = _find_earliest_slot(device_id, total_hours, db)
+        start = _find_earliest_slot(device_id, total_hours, db, running_until)
         if best_start is None or start < best_start:
             best_start = start
             best_device = device_id
@@ -244,20 +318,22 @@ def _auto_assign(conditions: List[str], db) -> tuple[str, datetime.datetime, dat
 
 
 @router.get("/preview")
-def preview_schedule(conditions: str, device_id: Optional[str] = None):
+def preview_schedule(request: Request, conditions: str, device_id: Optional[str] = None):
     """預覽排程時間（不寫入 DB）。conditions 為逗號分隔的 sop_id 清單。"""
     cond_list = [c.strip() for c in conditions.split(",") if c.strip()]
     if not cond_list:
         raise HTTPException(status_code=400, detail="至少需要一個測試條件")
 
     total_hours = _calc_total_hours(cond_list)
+    cache = getattr(request.app.state, "AICM_CACHE", {})
+    running_until = _build_running_until(cache)
 
     with SessionLocal() as db:
         if device_id and device_id in DEVICE_IDS:
-            start = _find_earliest_slot(device_id, total_hours, db)
+            start = _find_earliest_slot(device_id, total_hours, db, running_until)
             assigned_device = device_id
         else:
-            assigned_device, start, _ = _auto_assign(cond_list, db)
+            assigned_device, start, _ = _auto_assign(cond_list, db, running_until)
 
     end = start + datetime.timedelta(hours=total_hours)
     return {
@@ -409,6 +485,8 @@ def patch_schedule(schedule_id: int, body: SchedulePatch, request: Request):
 
         if body.status == "已確認":
             conditions = json.loads(s.conditions) if s.conditions else []
+            cache = getattr(request.app.state, "AICM_CACHE", {})
+            running_until = _build_running_until(cache)
             # 若管理人指定設備 + 手動時間 → 直接套用；只指定設備 → 自動算時間；否則全自動
             if body.device_id and body.start_time and body.end_time:
                 device_id = body.device_id
@@ -417,10 +495,10 @@ def patch_schedule(schedule_id: int, body: SchedulePatch, request: Request):
             elif body.device_id:
                 device_id = body.device_id
                 total_hours = _calc_total_hours(conditions)
-                start = _find_earliest_slot(device_id, total_hours, db)
+                start = _find_earliest_slot(device_id, total_hours, db, running_until)
                 end = start + datetime.timedelta(hours=total_hours)
             else:
-                device_id, start, end = _auto_assign(conditions, db)
+                device_id, start, end = _auto_assign(conditions, db, running_until)
 
             s.device_id = device_id
             s.start_time = start

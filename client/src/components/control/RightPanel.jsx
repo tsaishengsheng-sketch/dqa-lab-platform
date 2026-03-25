@@ -136,7 +136,7 @@ export default function RightPanel() {
   return (
     <div
       style={{
-        width: 360,
+        width: 420,
         flexShrink: 0,
         borderLeft: "1px solid #30363d",
         display: "flex",

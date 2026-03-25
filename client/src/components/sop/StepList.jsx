@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 
-const StepList = ({ steps, completedSteps, onToggle }) => {
+const StepList = ({ steps, completedSteps, onToggle, manualMode = false }) => {
   const totalSteps = steps.length;
   const doneCnt = Object.values(completedSteps).filter(Boolean).length;
   const allStepsDone = totalSteps > 0 && doneCnt === totalSteps;
@@ -38,15 +38,15 @@ const StepList = ({ steps, completedSteps, onToggle }) => {
               alignItems: "flex-start",
               gap: 10,
               marginBottom: 12,
-              cursor: isAuto ? "default" : unlocked ? "pointer" : "not-allowed",
+              cursor: (isAuto && !manualMode) ? "default" : unlocked ? "pointer" : "not-allowed",
               color: checked ? "#57ab5a" : "#cdd9e5",
             }}
           >
             <input
               type="checkbox"
               checked={checked}
-              disabled={isAuto || !unlocked}
-              onChange={() => !isAuto && unlocked && onToggle(step.step_id, idx)}
+              disabled={(isAuto && !manualMode) || !unlocked}
+              onChange={() => ((!isAuto || manualMode) && unlocked) && onToggle(step.step_id, idx)}
               style={{
                 marginTop: 3,
                 accentColor: "#57ab5a",

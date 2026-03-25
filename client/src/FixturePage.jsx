@@ -977,6 +977,12 @@ export default function FixturePage({ active, role }) {
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [purchasePreFill, setPurchasePreFill] = useState(null);
   const canOperate = role === "admin" || role === "keeper";
+  const [sortKey, setSortKey] = useState("interface_type");
+  const [sortDir, setSortDir] = useState("asc");
+  const handleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("asc"); }
+  };
 
   const fetchAll = useCallback(async () => {
     if (!active) return;
@@ -1033,6 +1039,17 @@ export default function FixturePage({ active, role }) {
       );
     }
     return true;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    let va = a[sortKey] ?? "";
+    let vb = b[sortKey] ?? "";
+    if (typeof va === "number" || typeof vb === "number") {
+      va = va ?? 0; vb = vb ?? 0;
+      return sortDir === "asc" ? va - vb : vb - va;
+    }
+    va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+    return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
   });
 
   const tabStyle = (t) => ({
@@ -1258,18 +1275,37 @@ export default function FixturePage({ active, role }) {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#21262d" }}>
-                  <th style={thStyle}>介面</th>
-                  <th style={thStyle}>型態</th>
-                  <th style={thStyle}>尺寸</th>
-                  <th style={thStyle}>現有</th>
-                  <th style={thStyle}>借出</th>
-                  <th style={thStyle}>可借</th>
-                  <th style={thStyle}>缺貨</th>
-                  <th style={thStyle}>狀態</th>
-                  <th style={thStyle}>使用率</th>
-                  <th style={thStyle}>汰換</th>
-                  <th style={thStyle}>保管人</th>
-                  <th style={thStyle}>實際數量</th>
+                  {[
+                    { label: "介面", key: "interface_type" },
+                    { label: "型態", key: "form_factor" },
+                    { label: "尺寸", key: "size" },
+                    { label: "現有", key: "total_quantity" },
+                    { label: "借出", key: "loaned_quantity" },
+                    { label: "可借", key: "available_quantity" },
+                    { label: "缺貨", key: "shortage" },
+                    { label: "狀態", key: null },
+                    { label: "使用率", key: "usage_frequency" },
+                    { label: "汰換", key: "estimated_replacement_date" },
+                    { label: "保管人", key: "keeper_name" },
+                    { label: "實際數量", key: null },
+                  ].map(({ label, key }) => (
+                    <th
+                      key={label}
+                      style={{
+                        ...thStyle,
+                        cursor: key ? "pointer" : "default",
+                        userSelect: "none",
+                      }}
+                      onClick={() => key && handleSort(key)}
+                    >
+                      {label}
+                      {key && sortKey === key && (
+                        <span style={{ marginLeft: 3, fontSize: 9 }}>
+                          {sortDir === "asc" ? "↑" : "↓"}
+                        </span>
+                      )}
+                    </th>
+                  ))}
                   {canOperate && <th style={thStyle}>操作</th>}
                 </tr>
               </thead>
@@ -1283,7 +1319,7 @@ export default function FixturePage({ active, role }) {
                       載入中...
                     </td>
                   </tr>
-                ) : filtered.length === 0 ? (
+                ) : sorted.length === 0 ? (
                   <tr>
                     <td
                       colSpan={canOperate ? 13 : 12}
@@ -1293,7 +1329,7 @@ export default function FixturePage({ active, role }) {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((f) => {
+                  sorted.map((f) => {
                     const editVal = inventoryEdits[f.id];
                     const isDiff = editVal !== undefined && editVal !== "" &&
                       !isNaN(parseInt(editVal)) && parseInt(editVal) < f.total_quantity;

@@ -389,6 +389,29 @@ class ProgressPayload(BaseModel):
     completed: int = 0
 
 
+class SetPhasePayload(BaseModel):
+    phase: str
+
+
+_VALID_PHASES = {
+    "ramp_to_low", "ramp_to_high", "dwell_high",
+    "ramp_to_low2", "dwell_low", "ramp_to_ambient",
+}
+
+
+@app.post("/api/devices/{device_id}/set-phase")
+async def set_phase(device_id: str, payload: SetPhasePayload):
+    """管理員手動跳相位（用於 demo / 手動接管）"""
+    device = _get_device(device_id)
+    if device.get("status") not in ("RUNNING", "PAUSED"):
+        raise HTTPException(status_code=400, detail="設備未在執行中")
+    if payload.phase not in _VALID_PHASES:
+        raise HTTPException(status_code=400, detail=f"無效的 phase：{payload.phase}")
+    device["sim_phase"] = payload.phase
+    _save_device_state(device_id, device)
+    return {"status": "success", "sim_phase": payload.phase}
+
+
 @app.post("/api/devices/{device_id}/progress")
 async def update_progress(device_id: str, payload: ProgressPayload):
     device = _get_device(device_id)

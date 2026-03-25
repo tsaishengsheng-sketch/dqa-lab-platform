@@ -11,6 +11,11 @@ import {
 } from "recharts";
 import { generateSP, mergeSpPv, toElapsedMin } from "./generateSP";
 
+function fmtWallClock(ms) {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 const TempChart = ({ sop, pvData, startedAt }) => {
   const spData = React.useMemo(() => generateSP(sop), [sop]);
 
@@ -21,10 +26,12 @@ const TempChart = ({ sop, pvData, startedAt }) => {
       .filter((p) => p.min != null);
   }, [pvData, startedAt]);
 
-  const merged = React.useMemo(
-    () => mergeSpPv(spData, pvWithMin),
-    [spData, pvWithMin],
-  );
+  const merged = React.useMemo(() => {
+    const base = mergeSpPv(spData, pvWithMin);
+    if (!startedAt) return base;
+    const startMs = new Date(startedAt).getTime();
+    return base.map((p) => ({ ...p, label: fmtWallClock(startMs + p.min * 60000) }));
+  }, [spData, pvWithMin, startedAt]);
 
   if (spData.length === 0) {
     return (
@@ -67,7 +74,7 @@ const TempChart = ({ sop, pvData, startedAt }) => {
           axisLine={{ stroke: "#30363d" }}
           interval={Math.max(1, Math.floor(merged.length / 8))}
           label={{
-            value: "Time (hr:min)",
+            value: startedAt ? "時刻 (HH:MM)" : "時長 (hr:min)",
             position: "insideBottom",
             offset: -16,
             fontSize: 9,

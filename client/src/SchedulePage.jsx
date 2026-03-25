@@ -498,6 +498,7 @@ function ScheduleDetailModal({ schedule, role, onClose, onUpdated, onDeleted }) 
       onUpdated(res.data);
     } catch (e) {
       setError(e.response?.data?.detail || "操作失敗");
+    } finally {
       setSaving(false);
     }
   }
@@ -510,6 +511,7 @@ function ScheduleDetailModal({ schedule, role, onClose, onUpdated, onDeleted }) 
       onUpdated(res.data);
     } catch (e) {
       setError(e.response?.data?.detail || "操作失敗");
+    } finally {
       setSaving(false);
     }
   }
@@ -522,6 +524,7 @@ function ScheduleDetailModal({ schedule, role, onClose, onUpdated, onDeleted }) 
       onUpdated(res.data);
     } catch (e) {
       setError(e.response?.data?.detail || "操作失敗");
+    } finally {
       setSaving(false);
     }
   }

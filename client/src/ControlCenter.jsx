@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import api from "./api";
 import SOPPage from "./SOPPage";
 import FixturePage from "./FixturePage";
@@ -8,6 +9,18 @@ import ErrorLog from "./ErrorLog";
 import RightPanel from "./components/control/RightPanel";
 
 const DEVICE_IDS = ["CH-01", "CH-02", "CH-03", "CH-04", "CH-05"];
+
+const TAB_TO_PATH = {
+  device: "/",
+  fixture: "/fixtures",
+  schedule: "/schedule",
+  users: "/users",
+  errors: "/errors",
+  executions: "/executions",
+};
+const PATH_TO_TAB = Object.fromEntries(
+  Object.entries(TAB_TO_PATH).map(([k, v]) => [v, k])
+);
 
 const STATUS_CONFIG = {
   OFFLINE: { color: "#484f58", label: "OFFLINE" },
@@ -766,6 +779,11 @@ function CenterPanel({ role, activeTab, setActiveTab, selectedDevice }) {
 // ── ControlCenter ─────────────────────────────────────────────────────────────
 
 export default function ControlCenter({ role, displayName, onLogout }) {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const activeTab = PATH_TO_TAB[pathname] ?? "device";
+  const setActiveTab = (key) => navigate(TAB_TO_PATH[key] ?? "/");
+
   const [devices, setDevices] = useState(
     DEVICE_IDS.map((id) => ({
       device_id: id,
@@ -774,7 +792,6 @@ export default function ControlCenter({ role, displayName, onLogout }) {
     })),
   );
   const [fixtureSummary, setFixtureSummary] = useState({});
-  const [activeTab, setActiveTab] = useState("device");
   const [selectedDevice, setSelectedDevice] = useState("CH-01");
 
   // 輪詢設備狀態（10s）
