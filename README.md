@@ -4,7 +4,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green)
+![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
 
 基於 FastAPI + React 的環境測試實驗室數位孿生平台，整合設備模擬引擎、SOP 執行管理、治具借還追蹤與 AI 法規諮詢，目標取代實驗室紙本作業流程。
 
@@ -260,4 +260,6 @@ make clean        # 清理殘留程序
 
 ## 授權
 
-[MIT License](./LICENSE)
+[AGPL-3.0 License](./LICENSE)
+
+本專案採用 AGPL-3.0 授權。若需商業授權（不遵守 AGPL 條款的商業使用），請聯絡作者。
