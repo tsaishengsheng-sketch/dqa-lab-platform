@@ -67,25 +67,6 @@ TopBar 設備摘要列、LeftPanel 設備卡片與紀錄連結、CenterPanel 多
 
 ---
 
-## 技術設計亮點
-
-### 分層狀態機
-設備狀態層（IDLE ↔ RUNNING ↔ PAUSED → FINISHING）與模擬相位層（idle → ramp → dwell → ramp → ambient）分離，嚴格控制狀態轉移，防止無效操作。EMERGENCY 觸發時自動記錄進度快照。
-
-### 物理模擬引擎
-自主實現的溫度模擬器，採用真實時間戳計時（避免累積誤差）、支援多週期循環、伺服器重啟自動恢復、動態計算 SP 波形支援時間壓縮展示。
-
-### RAG 檢索策略
-啟動時批次向量化測試條件（20 條/批），快取至本地 pickle 檔案。根據查詢類型採用不同策略：明確指定標準直接檢索、跨標準比較並行檢索、測試類型查詢用向量相似度 + 篩選。未指定標準時自動從對話歷史推斷，無法推斷則預設 IEC 60068。
-
-### 前端性能優化
-輪詢分級：Dashboard 狀態 10s、Dashboard 執行紀錄 60s、SOPPage 3s、ErrorLog 60s，隱藏時暫停避免背景耗電。治具頁手動觸發，避免不必要輪詢。
-
-### 多層安全設計
-Token 存 DB（重啟不失效、8 小時 TTL）、App 啟動時打 `/api/auth/me` 從後端刷新 role、IP Rate Limiting、401 時 axios interceptor 自動登出跳轉、CORS 環境變數控制。
-
----
-
 ## 快速啟動
 
 ### 前置需求
@@ -208,38 +189,7 @@ dqa-lab-digital-twin/
 
 ---
 
-## API 端點概覽
-
-完整 API 文件：`http://localhost:8000/docs`
-
-主要端點：
-- **設備控制**：`GET /api/devices`、`GET /api/device/{id}/data`
-- **SOP 管理**：`POST /api/sop/execute`、`GET /api/sop/{id}/report`
-- **治具管理**：`GET /api/fixtures/`、`GET /api/fixtures/summary`、`GET /api/fixtures/loans/active`、`GET /api/fixtures/loans/overdue`、`POST /api/fixtures/loans`、`POST /api/fixtures/loans/{id}/return`、`POST /api/fixtures/loans/{id}/extend`、`POST /api/fixtures/import`、`POST /api/fixtures/{id}/inventory`
-- **採購清單**：`GET /api/purchase_orders`、`POST /api/purchase_orders`、`PATCH /api/purchase_orders/{id}/receive`
-- **排程系統**：`GET /api/schedules/gantt`、`GET /api/schedules`、`POST /api/schedules`、`PATCH /api/schedules/{id}`、`DELETE /api/schedules/{id}`、`GET /api/schedules/standards-tree`、`GET /api/device-blocked-periods`、`POST /api/device-blocked-periods`、`DELETE /api/device-blocked-periods/{id}`
-- **AI 諮詢**：`POST /api/ai/query`（串流）
-- **Auth**：`POST /api/auth/login`、`POST /api/auth/demo-login`、`GET /api/auth/me`、`GET /api/auth/users`、`POST /api/auth/users`、`PATCH /api/auth/users/{id}`、`DELETE /api/auth/users/{id}`、`GET /api/auth/demo-tokens`、`POST /api/auth/demo-tokens`、`DELETE /api/auth/demo-tokens/{id}`、`PATCH /api/auth/demo-tokens/{id}/toggle`
-- **SOP 執行紀錄**：`POST /api/sop-executions/`、`GET /api/sop-executions/{id}`、`POST /api/sop-executions/{id}/photos`
-- **異常紀錄**：`GET /api/error-logs`
-
----
-
-## 開發指南
-
-### 資料庫遷移
-
-```bash
-cd backend
-
-# 自動生成遷移指令碼
-alembic revision --autogenerate -m "描述你的變更"
-
-# 應用遷移至資料庫
-alembic upgrade head
-```
-
-### 常用指令
+## 常用指令
 
 ```bash
 make install      # 安裝所有依賴（含 pip 和 npm）
@@ -247,19 +197,12 @@ make dev          # 啟動全部服務
 make clean        # 清理殘留程序
 ```
 
+完整 API 文件：`http://localhost:8000/docs`
+
 ---
 
 ## 後續規劃
 
-- [x] 採購清單閉環（缺貨警示 → 採購單 → 到貨入庫）
-- [x] 汰換提醒（APScheduler 每週掃描 + LINE Bot 推播）
-- [x] 前端控制中心大改版（三欄固定佈局，TopBar + LeftPanel + CenterPanel + AI 側欄，設備選擇器整合、紀錄連結接通）
-- [x] AI 右欄對話管理（迷你切換列、新增 / 清除對話、串流效能修復）
-- [x] 訪客 Token 管理（管理者 UI 生成、期限 / 使用次數控制、use_count 僅登入遞增一次）
-- [x] 訪客模式功能開放（AI 諮詢全開放、治具唯讀、逾期未還 / 採購清單 tab 隱藏）
-- [x] AI 快速按鈕隨機池（16 題隨機抽 4，每次點擊後刷新；訪客每次登入清空對話紀錄）
-- [x] 排程系統（甘特圖 + 自動排程 + 設備不可用時段 + 三層條件選擇器）
-- [x] SOP 流程重構（步驟自動確認 + 自動存報告 + 照片補充 + LINE 三時機推播 + 排程時長 +30min 穩定時間）
 - [ ] RS-485 真實設備通訊（Phase 3）
 - [ ] JWT 完整替換（單一 Authorization: Bearer header）
 - [ ] 密碼雜湊升級（passlib bcrypt 取代 SHA-256）
