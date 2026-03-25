@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import api from "./api";
 import MonitorSide from "./components/sop/MonitorSide";
 import ControlPanel from "./components/sop/ControlPanel";
@@ -22,6 +22,7 @@ const initDeviceState = () => ({
   activeSop: null,
   completedSteps: {},
   savedExecutionId: null,
+  autoSave: false,
   safetyChecked: [false, false, false, false],
   chartHistory: [],
   chartStartedAt: null,
@@ -142,6 +143,8 @@ const SOPPage = ({ active = true, externalDevice }) => {
 
   const historyFetchingRef = useRef(null);
   const lastHistoryMinuteRef = useRef(-1);
+  const prevSimPhaseRef = useRef("");
+  const prevSimCycleRef = useRef(0);
 
   const data = allDevices[selectedDevice] || {
     status: "OFFLINE",
@@ -307,6 +310,123 @@ const SOPPage = ({ active = true, externalDevice }) => {
     fetchHistory(selectedDevice, startedAt);
   }, [startedAt]); // eslint-disable-line
 
+  // Phase 9-2: 根據 sim_phase 自動確認步驟
+  const simPhase = allDevices[selectedDevice]?.sim_phase || "";
+  const simCycle = allDevices[selectedDevice]?.sim_cycle || 0;
+
+  const autoTriggerMap = useMemo(() => {
+    const steps = deviceStates[selectedDevice]?.activeSop?.steps || [];
+    const map = {};
+    steps.forEach((s) => {
+      if (s.auto_trigger) map[s.auto_trigger] = (map[s.auto_trigger] || []).concat(s.step_id);
+    });
+    return map;
+  }, [deviceStates, selectedDevice]);
+  const autoTriggerMapRef = useRef({});
+  autoTriggerMapRef.current = autoTriggerMap;
+  const deviceStatesRef = useRef(deviceStates);
+  deviceStatesRef.current = deviceStates;
+
+  // 切換設備時重置 prev refs，避免誤觸發
+  useEffect(() => {
+    prevSimPhaseRef.current = simPhase;
+    prevSimCycleRef.current = simCycle;
+  }, [selectedDevice]); // eslint-disable-line
+
+  // 載入已執行中設備時，根據當前 sim_phase 恢復自動步驟狀態
+  useEffect(() => {
+    const curDs = deviceStatesRef.current[selectedDevice];
+    if (!curDs?.activeSop || Object.keys(curDs.completedSteps).length > 0) return;
+
+    const phase = simPhase;
+    const cycle = simCycle;
+    const steps = curDs.activeSop.steps || [];
+    const totalCycles = curDs.activeSop.cycles || 1;
+    const firedTriggers = new Set();
+
+    if (phase && phase !== "idle") firedTriggers.add("first_ramp");
+    if (["dwell_high", "ramp_to_low2", "dwell_low", "ramp_to_ambient"].includes(phase)) firedTriggers.add("first_dwell");
+    if (["dwell_low", "ramp_to_ambient"].includes(phase)) firedTriggers.add("second_dwell");
+    if (phase === "ramp_to_ambient") firedTriggers.add("complete");
+    if (cycle >= Math.ceil(totalCycles / 2)) firedTriggers.add("cycle_half");
+
+    const newCompleted = {};
+    steps.forEach((s) => {
+      if (s.auto_trigger && firedTriggers.has(s.auto_trigger)) newCompleted[s.step_id] = true;
+    });
+
+    if (Object.keys(newCompleted).length > 0) {
+      setDeviceStates((prev) => ({
+        ...prev,
+        [selectedDevice]: { ...prev[selectedDevice], completedSteps: newCompleted },
+      }));
+    }
+  }, [ds.activeSop?.sop_id, selectedDevice]); // eslint-disable-line
+
+  useEffect(() => {
+    const prevPhase = prevSimPhaseRef.current;
+    const prevCycle = prevSimCycleRef.current;
+    prevSimPhaseRef.current = simPhase;
+    prevSimCycleRef.current = simCycle;
+
+    // 初次載入或切換設備後第一次 poll，不觸發（refs 已在上方 useEffect 初始化）
+    if (!prevPhase && !prevCycle) return;
+
+    const curDs = deviceStatesRef.current[selectedDevice];
+    if (!curDs?.activeSop || !ACTIVE_STATUSES.includes(allDevices[selectedDevice]?.status)) return;
+
+    const totalCycles = curDs.activeSop.cycles || 1;
+    let changed = false;
+    const pendingChecks = [];
+
+    const autoCheck = (trigger) => {
+      const ids = autoTriggerMapRef.current[trigger] || [];
+      ids.forEach((id) => {
+        if (!curDs.completedSteps[id]) { pendingChecks.push(id); changed = true; }
+      });
+    };
+
+    // 進入第一個 ramp（非 ambient）
+    if (!prevPhase.startsWith("ramp") && simPhase.startsWith("ramp_to") && simPhase !== "ramp_to_ambient") {
+      autoCheck("first_ramp");
+    }
+    // 進入第一個 dwell_high
+    if (prevPhase !== "dwell_high" && simPhase === "dwell_high") {
+      autoCheck("first_dwell");
+    }
+    // 進入 dwell_low
+    if (prevPhase !== "dwell_low" && simPhase === "dwell_low") {
+      autoCheck("second_dwell");
+    }
+    // 循環過半
+    if (simCycle !== prevCycle && simCycle >= Math.ceil(totalCycles / 2)) {
+      autoCheck("cycle_half");
+    }
+
+    // 進入 ramp_to_ambient = 測試自然完成，自動確認剩餘步驟並標記自動存報告
+    let triggerAutoSave = false;
+    if (prevPhase !== "ramp_to_ambient" && simPhase === "ramp_to_ambient") {
+      autoCheck("complete");
+      triggerAutoSave = true;
+    }
+
+    if (changed || triggerAutoSave) {
+      setDeviceStates((prev) => {
+        const prevDs = prev[selectedDevice];
+        const newCompleted = { ...prevDs.completedSteps };
+        pendingChecks.forEach((id) => { newCompleted[id] = true; });
+        return {
+          ...prev,
+          [selectedDevice]: {
+            ...prevDs,
+            completedSteps: newCompleted,
+            ...(triggerAutoSave ? { autoSave: true } : {}),
+          },
+        };
+      });
+    }
+  }, [simPhase, simCycle]); // eslint-disable-line
+
   const startSop = async (confirmedOperator) => {
     if (!testData || starting) return;
     const sopSteps = testData.steps || [];
@@ -346,6 +466,7 @@ const SOPPage = ({ active = true, externalDevice }) => {
           activeSop: null,
           completedSteps: {},
           savedExecutionId: null,
+          autoSave: false,
           safetyChecked: [false, false, false, false],
         });
         setStartError("");
@@ -447,8 +568,9 @@ const SOPPage = ({ active = true, externalDevice }) => {
                   operator={operator}
                   startedAt={data.started_at}
                   savedExecutionId={ds.savedExecutionId}
+                  autoSave={ds.autoSave}
                   onSaved={(id) =>
-                    updateDS(selectedDevice, { savedExecutionId: id })
+                    updateDS(selectedDevice, { savedExecutionId: id, autoSave: false })
                   }
                   onError={setStartError}
                 />

@@ -18,7 +18,7 @@ from .reports import router as reports_router
 from .errors import router as errors_router
 from .ai import router as ai_router
 from .rag import warmup_rag
-from .line import router as line_router, push_message
+from .line import router as line_router, push_message, push_to_user
 from .auth import router as auth_router
 from .fixtures import router as fixtures_router
 from .fixture_notifications import scan_overdue_loans, notify_monthly_inventory, scan_replacement_reminders
@@ -230,6 +230,7 @@ async def get_all_devices():
             else None,
             "estimated_end_at": _calc_estimated_end_at(item),
             "sim_cycle": item.get("sim_cycle", 0),
+            "sim_phase": item.get("sim_phase", "idle"),
         }
         for device_id, item in app.state.AICM_CACHE.items()
     ]
@@ -420,9 +421,29 @@ async def normal_stop(device_id: str):
     return {"status": "success"}
 
 
+async def _push_sop_notification(operator_name: str, text: str):
+    """推播 SOP 通知給操作人員，無法取得 LINE ID 時推給管理員。"""
+    from .models import User
+    if operator_name:
+        try:
+            with SessionLocal() as db:
+                user = (
+                    db.query(User)
+                    .filter(User.display_name == operator_name, User.is_active == True)
+                    .first()
+                )
+                if user and user.line_user_id:
+                    await push_to_user(user.line_user_id, text)
+                    return
+        except Exception:
+            pass
+    await push_message(text)
+
+
 async def data_simulator():
     write_counters: dict = {}
     dwell_start_times: dict = {}
+    sop_notif_sent: dict = {}  # {device_id: set[str]} 每次 SOP 啟動時重置
 
     while True:
         cache = app.state.AICM_CACHE

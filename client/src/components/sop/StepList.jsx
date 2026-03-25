@@ -23,12 +23,13 @@ const StepList = ({ steps, completedSteps, onToggle }) => {
   return (
     <div>
       <p style={{ color: "#8b949e", fontSize: 12, marginBottom: 14 }}>
-        請依序確認每個步驟已完成：
+        測試進度（⚡ 步驟由系統自動確認）：
       </p>
 
       {steps.map((step, idx) => {
         const unlocked = unlockedMap[idx];
         const checked = !!completedSteps[step.step_id];
+        const isAuto = !!step.auto_trigger;
         return (
           <label
             key={step.step_id}
@@ -37,25 +38,40 @@ const StepList = ({ steps, completedSteps, onToggle }) => {
               alignItems: "flex-start",
               gap: 10,
               marginBottom: 12,
-              cursor: unlocked ? "pointer" : "not-allowed",
+              cursor: isAuto ? "default" : unlocked ? "pointer" : "not-allowed",
               color: checked ? "#57ab5a" : "#cdd9e5",
             }}
           >
             <input
               type="checkbox"
               checked={checked}
-              disabled={!unlocked}
-              onChange={() => unlocked && onToggle(step.step_id, idx)}
+              disabled={isAuto || !unlocked}
+              onChange={() => !isAuto && unlocked && onToggle(step.step_id, idx)}
               style={{
                 marginTop: 3,
                 accentColor: "#57ab5a",
                 flexShrink: 0,
-                opacity: unlocked ? 1 : 0.3,
+                opacity: unlocked || checked ? 1 : 0.3,
               }}
             />
-            <div style={{ opacity: unlocked ? 1 : 0.55 }}>
+            <div style={{ opacity: unlocked || checked ? 1 : 0.55 }}>
               <div style={{ fontWeight: 700, fontSize: 12 }}>
                 Step {step.step_id}. {step.name}
+                {isAuto && (
+                  <span
+                    style={{
+                      marginLeft: 6,
+                      fontSize: 10,
+                      padding: "1px 6px",
+                      background: checked ? "#0f2318" : "#1c2128",
+                      color: checked ? "#57ab5a" : "#58a6ff",
+                      borderRadius: 4,
+                      border: `1px solid ${checked ? "#2d5a3a" : "#1f6feb"}`,
+                    }}
+                  >
+                    ⚡ Auto
+                  </span>
+                )}
                 {step.optional && (
                   <span
                     style={{
@@ -70,7 +86,7 @@ const StepList = ({ steps, completedSteps, onToggle }) => {
                     Optional
                   </span>
                 )}
-                {!unlocked && (
+                {!unlocked && !isAuto && (
                   <span
                     style={{
                       marginLeft: 6,

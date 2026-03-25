@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import api from "../../api";
 
 // 儲存執行紀錄 + blob 下載報告（帶 X-Demo-Password header，不會被 auth 擋）
@@ -10,6 +10,7 @@ const ExecutionPanel = ({
   operator,
   startedAt,
   savedExecutionId,
+  autoSave = false,
   onSaved,
   onError,
 }) => {
@@ -75,6 +76,13 @@ const ExecutionPanel = ({
       setSaving(false);
     }
   };
+
+  // Phase 9-3: 測試自然完成時自動存報告
+  useEffect(() => {
+    if (autoSave && !saving && !savedExecutionId) {
+      saveExecution();
+    }
+  }, [autoSave]); // eslint-disable-line
 
   // 已儲存狀態
   if (savedExecutionId) {
