@@ -481,7 +481,7 @@ function CenterPanel({ role, activeTab, setActiveTab, selectedDevice }) {
         </div>
         {role === "admin" && (
           <div style={{ display: activeTab === "users" ? "block" : "none", height: "100%" }}>
-            <UsersPage active={activeTab === "users"} />
+            <UsersPage active={activeTab === "users"} role={role} />
           </div>
         )}
         <div style={{ display: activeTab === "errors" ? "block" : "none", height: "100%" }}>

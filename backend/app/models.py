@@ -341,6 +341,29 @@ class DeviceBlockedPeriod(Base):
     )
 
 
+# ---------- LINE 綁定申請 ----------
+class LineBindRequest(Base):
+    __tablename__ = "line_bind_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    line_user_id: Mapped[str] = mapped_column(String, index=True)
+    requested_name: Mapped[str] = mapped_column(String)  # 使用者填寫的姓名
+    # pending / awaiting_name / approved / rejected
+    status: Mapped[str] = mapped_column(String, default="pending", index=True)
+    matched_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    reviewed_by: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    reviewed_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+
 # ---------- 資料庫初始化 ----------
 def init_db():
     Base.metadata.create_all(bind=engine)
