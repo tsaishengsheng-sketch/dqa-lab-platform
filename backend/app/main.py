@@ -179,7 +179,11 @@ def _calc_estimated_end_at(item: dict) -> Optional[str]:
     low_temp = sop.get("low_temperature")
     ambient = 25.0
 
-    if low_temp is not None and low_temp < ambient:
+    if low_temp is not None and low_temp < ambient and abs(high_temp - low_temp) <= 0.1:
+        # 單溫冷測（high_temp == low_temp，如 Test Ab/Ad）：只有一段 dwell
+        ramp_ambient_to_low = abs(ambient - low_temp) / ramp_rate
+        total_min = ramp_ambient_to_low + dwell_min + ramp_ambient_to_low
+    elif low_temp is not None and low_temp < ambient:
         ramp_ambient_to_low = abs(ambient - low_temp) / ramp_rate
         ramp_low_to_high = abs(high_temp - low_temp) / ramp_rate
         one_cycle_min = ramp_low_to_high + dwell_min + ramp_low_to_high + dwell_min
@@ -497,7 +501,12 @@ async def data_simulator():
                     new_temp = move_toward(current_temp, low_temp)
                     if abs(new_temp - low_temp) <= 0.1:
                         new_temp = low_temp
-                        item["sim_phase"] = "ramp_to_high"
+                        if abs(high_temp - low_temp) <= 0.1:
+                            # 單溫冷測（high_temp == low_temp）：直接進入 dwell，跳過 ramp_to_high
+                            item["sim_phase"] = "dwell_high"
+                            dwell_start_times[f"{device_id}_high"] = now
+                        else:
+                            item["sim_phase"] = "ramp_to_high"
 
                 elif sim_phase == "ramp_to_high":
                     new_temp = move_toward(current_temp, high_temp)
@@ -513,9 +522,11 @@ async def data_simulator():
                     elapsed = (now - dwell_start).total_seconds()
                     if elapsed >= dwell_seconds:
                         dwell_start_times.pop(dwell_key, None)
-                        if low_temp is not None:
+                        if low_temp is not None and abs(high_temp - low_temp) > 0.1:
+                            # 兩溫循環測試：需要再降溫到 low_temp 停留
                             item["sim_phase"] = "ramp_to_low2"
                         else:
+                            # 單溫測試（含冷測）：直接回常溫
                             item["sim_phase"] = "ramp_to_ambient"
 
                 elif sim_phase == "ramp_to_low2":

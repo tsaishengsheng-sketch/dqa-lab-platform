@@ -10,44 +10,18 @@
 
 ---
 
-## 為什麼要做這個專案
-
-工業環境測試涉及眾多國際標準，測試人員需手動查閱法規、重複進行參數計算、耗費新人培訓成本。本專案透過數位化解決這些問題：
-
-1. **內建 78 項精確測試條件** — 消除手動查閱的誤差
-2. **設備狀態機 + 物理模擬引擎** — 支援離線驗證，無需實體硬體
-3. **AI 法規助手** — 用自然語言快速檢索與比較標準
-4. **完整追溯記錄** — ISO 17025 格式報告，保證可追溯性
-5. **治具借還管理** — 取代紙本紀錄，採購閉環、汰換提醒、LINE Bot 即時通知
-6. **四層權限控管** — 管理者 / 保管人 / 工程師 / 訪客，後端 token 驗證
-
----
-
 ## 核心功能
 
-### 🖥️ 控制中心（三欄佈局）
-TopBar 設備摘要列、LeftPanel 設備卡片與紀錄連結、CenterPanel 多 tab 切換（設備 / 治具 / 排程 / 人員管理）、RightPanel 常駐 AI 側欄（含迷你對話切換列）。多台溫箱設備即時監控，顯示溫濕度、運行狀態、倒數計時，支援雙 Y 軸趨勢圖與六種狀態指示。
-
-### 🔧 SOP 執行引擎
-三步驟選擇法規 → 版本 → 測試條件，自動載入參數。支援步驟自動確認（監聽 sim_phase 轉換，無需手動勾選）、測試完成自動存報告、LINE 三時機推播（啟動 / 達溫 / 完成）、照片補充（執行紀錄頁行內上傳）、ISO 17025 CSV 報告下載。
-
-### 🗄️ 治具借還管理
-治具總表、借出登記、歸還確認（正常/損壞/遺失，支援補填歸還日期）、逾期追蹤、損壞/遺失紀錄清單、月盤點回填、Excel 批次匯入。保管人中心制，LINE Bot 推播借用人確認。採購清單閉環（缺貨警示 → 採購單 → 到貨入庫），汰換提醒（APScheduler 每週推播保管人）。
-
-### 🤖 AI 法規諮詢
-自然語言查詢「EN 50155 和 IEC 60068 的濕熱循環有什麼差異？」，系統透過 RAG 檢索法規內容、對比參數、推論說明。對話歷史本機儲存，支援多輪上下文。控制中心右欄常駐顯示迷你版，含快速問題按鈕與對話切換（‹/›箭頭 + 新增 / 清除），無需離開設備監控畫面。
-
-### 🗓️ 排程系統（甘特圖）
-工程師提交排程申請（專案號碼、樣品名稱、測試條件逐一勾選），管理者審核時即時預覽預計排入時段（切換設備選項自動重算），確認後系統自動計算總時長、選擇最早可用設備排入。甘特圖以設備為列、時間為軸，色塊按狀態著色（待審核 / 已確認 / 進行中 / 已完成 / 已取消）。管理者可標記設備不可用時段（維修 / 校正），自動排程時跳過衝突。
-
-### 🚨 異常與通知
-緊急停止事件自動記錄、步驟進度快照。LINE Bot 推播逾期提醒、借出通知、月盤點提醒、汰換提醒。
-
-### 👥 人員管理
-工程師名冊維護（新增 / 編輯 / 停用 / 刪除），綁定 LINE User ID 供推播使用。Admin only，工程師帳號無法登入系統，僅作為借用人選單來源。同頁管理訪客 Token（可設期限與使用次數上限，停用 / 刪除）。
-
-### 🔐 四層存取控制
-帳號登入（token 存 DB，重啟不失效）+ 訪客 Token（管理者在 UI 生成，可設期限與使用次數上限，作為主要訪客管理方式，後備 Master Key 仍保留）。App 啟動時從後端 `/api/auth/me` 驗證真實 role，防止 localStorage 竄改。四層角色：管理者 / 保管人 / 工程師 / 訪客。IP Rate Limiting：未提供憑證 5 次封鎖 10 分鐘。
+| 模組 | 功能摘要 |
+|------|---------|
+| 🖥️ **控制中心** | 多台溫箱即時監控（溫濕度、狀態、倒數計時）、雙 Y 軸趨勢圖、三欄主框架 |
+| 🔧 **SOP 執行引擎** | 三步驟選法規 → 版本 → 條件，自動載入參數、步驟自動確認、ISO 17025 CSV 報告下載 |
+| 🗄️ **治具借還管理** | 借出 / 歸還 / 逾期追蹤、損壞遺失清單、月盤點、採購閉環、Excel 批次匯入 |
+| 🤖 **AI 法規諮詢** | 自然語言查詢、RAG 法規檢索、多輪對話、右側欄常駐顯示 |
+| 🗓️ **排程系統** | 甘特圖、自動排程（最早可用設備）、審核前即時預覽時段、不可用時段管理 |
+| 🚨 **LINE Bot 通知** | SOP 三時機推播、治具借出同時通知借用人與保管人、逾期 / 汰換 / 月盤點提醒 |
+| 👥 **人員管理** | 工程師名冊、LINE 自助綁定（傳「綁定 姓名」即完成）、訪客 Token 管理 |
+| 🔐 **四層存取控制** | 管理者 / 保管人 / 工程師 / 訪客，後端 token 驗證，IP Rate Limiting |
 
 ---
 
@@ -69,144 +43,40 @@ TopBar 設備摘要列、LeftPanel 設備卡片與紀錄連結、CenterPanel 多
 
 ## 快速啟動
 
-### 前置需求
-- Python 3.9+
-- Node.js 18+
-- macOS / Linux / WSL2
-
-### 安裝與啟動
+**前置需求：** Python 3.9+、Node.js 18+、macOS / Linux / WSL2
 
 ```bash
-# 1. 安裝所有依賴
-make install
-
-# 2. 初始化資料庫（首次執行）
-python backend/init_db.py
-
-# 3. 啟動全部服務
-make dev
+make install                  # 安裝所有依賴
+python backend/init_db.py     # 初始化資料庫（首次執行）
+make dev                      # 啟動全部服務
 ```
 
-### 本地服務
+| 服務 | 網址 |
+|------|------|
+| 前端 | http://localhost:5173 |
+| 後端 API | http://localhost:8000 |
+| API 文件 | http://localhost:8000/docs |
 
-| 服務 | 網址 | 說明 |
-|------|------|------|
-| 前端 | http://localhost:5173 | React UI |
-| 後端 API | http://localhost:8000 | FastAPI 伺服器 |
-| API 文件 | http://localhost:8000/docs | Swagger 互動式文件 |
-| ngrok 面板 | http://localhost:4040 | LINE Webhook 除錯 |
-
-### 環境變數設定
-
-複製 `backend/.env.example`，填入必要的變數：
-
-```bash
-# 後備 Master Key（正常情況改用 UI 管理訪客 Token；本機開發可留空）
-DEMO_PASSWORD=your_master_key
-
-# AI 諮詢（可選）
-GEMINI_API_KEY=your_key
-
-# LINE 推播（可選）
-LINE_CHANNEL_SECRET=your_secret
-LINE_CHANNEL_ACCESS_TOKEN=your_token
-
-# 資料庫 & CORS
-DATABASE_URL=sqlite:///./dqa_lab.db
-ALLOWED_ORIGINS=http://localhost:5173
-```
-
-### 常見問題
-
-**Q: Alembic 相關錯誤**
-A: 執行 `python backend/init_db.py` 初始化資料庫
-
-**Q: LINE Bot 推播無反應**
-A: 重新開啟終端，重新執行 `make dev`（ngrok URL 會重新生成）
-
-**Q: 前端無法連線後端**
-A: 確認 `backend/.env` 的 `ALLOWED_ORIGINS` 設定是否正確
-
----
-
-## 專案結構
-
-```
-dqa-lab-digital-twin/
-├── backend/
-│   ├── app/
-│   │   ├── standards/              # 國際標準測試條件庫（模組化）
-│   │   ├── models.py               # SQLAlchemy ORM 定義
-│   │   ├── main.py                 # FastAPI 路由 & 應用進入點
-│   │   ├── sop.py                  # SOP 執行邏輯
-│   │   ├── ai.py                   # Gemini 推理整合
-│   │   ├── rag.py                  # RAG 向量檢索 & 智能標準推薦
-│   │   ├── auth.py                 # 帳號驗證、token 管理、使用者 CRUD
-│   │   ├── fixtures.py             # 治具管理 API（含汰換日期即時計算）
-│   │   ├── purchase_orders.py      # 採購清單 CRUD
-│   │   ├── fixture_notifications.py # LINE Bot 推播排程（含汰換提醒）
-│   │   ├── line.py                 # LINE Messaging API 推播
-│   │   ├── schedules.py            # 排程系統 API（申請 / 審核 / 自動排程 / 甘特圖）
-│   │   ├── reports.py              # ISO 17025 相容報告生成
-│   │   └── serial_reader.py        # RS-485 串列通訊（Phase 3 準備）
-│   ├── alembic/                    # 資料庫遷移管理
-│   ├── init_db.py
-│   └── requirements.txt
-├── client/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── ai/                 # AI 諮詢元件（ChatArea / ChatSidebar / useAIChat 等）
-│   │   │   ├── sop/                # SOP 執行元件（10 個子元件）
-│   │   │   └── control/            # 控制中心元件（RightPanel AI 側欄）
-│   │   ├── api.js                  # Axios 實例 + 認證攔截器
-│   │   ├── App.jsx                 # Session 管理 → 載入 ControlCenter
-│   │   ├── ControlCenter.jsx       # 三欄主框架（TopBar + LeftPanel + CenterPanel）
-│   │   ├── SOPPage.jsx             # SOP 主頁面
-│   │   ├── ErrorLog.jsx            # 異常紀錄頁
-│   │   ├── FixturePage.jsx         # 治具管理頁
-│   │   ├── SchedulePage.jsx        # 排程系統頁（甘特圖 + 申請 / 審核 Modal）
-│   │   ├── UsersPage.jsx           # 人員管理頁（admin only）
-│   │   ├── Dashboard.jsx           # 保留，已不在主 nav 顯示
-│   │   ├── AIPage.jsx              # 保留，已不在主 nav 顯示
-│   │   └── main.jsx
-│   ├── package.json
-│   └── vite.config.js
-├── Makefile
-├── CLAUDE.md                       # 開發規範 & 技術規格（AI 協作參考）
-└── README.md
-```
+複製 `backend/.env.example` 並填入環境變數（Gemini API Key、LINE Token 等）。
 
 ---
 
 ## 技術堆棧
 
-| 層級 | 技術 | 選擇理由 |
-|------|------|---------|
-| **後端** | FastAPI、SQLAlchemy 2.0、SQLite、Alembic、APScheduler | 非同步性能、自動 API 文件、ORM 遷移、排程推播 |
-| **前端** | React 18、Vite、Recharts、Axios | 元件化、快速開發、高效渲染、實時圖表 |
-| **AI** | Gemini API（Embedding + Flash-Lite）、in-memory RAG | 低成本向量化、高質量推理、免費額度足夠 |
-| **通知** | LINE Messaging API + APScheduler | 即時推播、排程掃描、易於自動化 |
-
----
-
-## 常用指令
-
-```bash
-make install      # 安裝所有依賴（含 pip 和 npm）
-make dev          # 啟動全部服務
-make clean        # 清理殘留程序
-```
-
-完整 API 文件：`http://localhost:8000/docs`
+| 層級 | 技術 |
+|------|------|
+| **後端** | FastAPI、SQLAlchemy 2.0、SQLite、Alembic、APScheduler |
+| **前端** | React 18、Vite、Recharts、Axios |
+| **AI** | Gemini API（Embedding + Flash-Lite）、in-memory RAG |
+| **通知** | LINE Messaging API + APScheduler |
 
 ---
 
 ## 後續規劃
 
-- [ ] LINE Bot 工程師自助綁定流程（加好友後傳「綁定 姓名」自動寫入 LINE ID）
 - [ ] RS-485 真實設備通訊（Phase 3）
-- [ ] JWT 完整替換（單一 Authorization: Bearer header）
-- [ ] 密碼雜湊升級（passlib bcrypt 取代 SHA-256）
+- [ ] JWT 完整替換（Authorization: Bearer）
+- [ ] 密碼雜湊升級（passlib bcrypt）
 
 ---
 
@@ -214,4 +84,4 @@ make clean        # 清理殘留程序
 
 [AGPL-3.0 License](./LICENSE)
 
-本專案採用 AGPL-3.0 授權。若需商業授權（不遵守 AGPL 條款的商業使用），請聯絡作者。
+本專案採用 AGPL-3.0 授權。若需商業授權，請聯絡作者。
