@@ -346,6 +346,84 @@ function LineBindRequestsSection({ active, role }) {
   );
 }
 
+// ── LINE 推播失敗紀錄 ────────────────────────────────────────────
+
+function NotifFailuresSection({ active, role }) {
+  const [failures, setFailures] = useState([]);
+  const [clearing, setClearing] = useState(false);
+
+  const fetchFailures = useCallback(() => {
+    if (!active || role !== "admin") return;
+    api.get("/api/notification-failures/").then((res) => setFailures(res.data)).catch(() => {});
+  }, [active, role]);
+
+  useEffect(() => { fetchFailures(); }, [fetchFailures]);
+
+  const handleClear = async () => {
+    setClearing(true);
+    try {
+      await api.post("/api/notification-failures/clear");
+      setFailures([]);
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  if (role !== "admin") return null;
+
+  return (
+    <div style={{ marginTop: 36 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "#cdd9e5" }}>LINE 推播失敗紀錄</div>
+        {failures.length > 0 && (
+          <span style={{ background: "#da3633", color: "#fff", fontSize: 11, fontWeight: 700, borderRadius: 8, padding: "2px 7px" }}>
+            {failures.length} 筆未讀
+          </span>
+        )}
+        {failures.length > 0 && (
+          <button
+            onClick={handleClear}
+            disabled={clearing}
+            style={{ marginLeft: "auto", padding: "4px 14px", borderRadius: 6, border: "1px solid #30363d", background: "transparent", color: "#8b949e", fontSize: 12, cursor: "pointer" }}
+          >
+            {clearing ? "清除中…" : "全部標為已讀"}
+          </button>
+        )}
+      </div>
+      {failures.length === 0 ? (
+        <div style={{ color: "#484f58", textAlign: "center", padding: "24px 0", fontSize: 13, background: "#161b22", border: "1px solid #30363d", borderRadius: 8 }}>
+          目前沒有推播失敗紀錄
+        </div>
+      ) : (
+        <div style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: "#21262d" }}>
+                {["時間", "目標", "訊息摘要", "錯誤原因"].map((h) => (
+                  <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: "#8b949e", fontWeight: 600 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {failures.map((f) => (
+                <tr key={f.id} style={{ borderTop: "1px solid #30363d" }}>
+                  <td style={{ padding: "8px 12px", color: "#8b949e", whiteSpace: "nowrap" }}>
+                    {f.created_at ? new Date(f.created_at).toLocaleString("zh-TW", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-"}
+                  </td>
+                  <td style={{ padding: "8px 12px", color: "#cdd9e5" }}>{f.target || "-"}</td>
+                  <td style={{ padding: "8px 12px", color: "#8b949e", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.message_preview || "-"}</td>
+                  <td style={{ padding: "8px 12px", color: "#f85149", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.error_msg || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ── 訪客 Token 管理 ────────────────────────────────────────────
 
 function DemoTokenSection({ active }) {
@@ -807,6 +885,9 @@ export default function UsersPage({ active, role }) {
 
       {/* LINE 綁定申請 */}
       <LineBindRequestsSection active={active} role={role} />
+
+      {/* LINE 推播失敗紀錄 */}
+      <NotifFailuresSection active={active} role={role} />
 
       {/* 訪客 Token 管理 */}
       <DemoTokenSection active={active} />

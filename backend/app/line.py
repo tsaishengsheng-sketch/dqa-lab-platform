@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
-from .models import SessionLocal, User, LineBindRequest
+from .models import SessionLocal, User, LineBindRequest, NotificationFailure
 
 # --- 設定 ---
 logger = logging.getLogger("line_bot")
@@ -31,6 +31,21 @@ STATUS_CONFIG = {
 }
 
 
+def _log_notif_failure(target: str, text: str, error_msg: str):
+    """將推播失敗寫入 notification_failures 表"""
+    try:
+        with SessionLocal() as db:
+            db.add(NotificationFailure(
+                notif_type="general",
+                target=target,
+                message_preview=text[:80] if text else None,
+                error_msg=error_msg[:200] if error_msg else None,
+            ))
+            db.commit()
+    except Exception as e:
+        logger.error(f"[LINE] 寫入失敗紀錄時例外：{e}")
+
+
 async def push_message(text: str):
     """主動推播訊息給 env 設定的預設 User ID（供 main.py 緊急通知使用）"""
     token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
@@ -38,6 +53,7 @@ async def push_message(text: str):
 
     if not token or not user_id:
         logger.warning("[LINE] 未設定 TOKEN 或 USER_ID，跳過推播")
+        _log_notif_failure("(broadcast)", text, "未設定 TOKEN 或 USER_ID")
         return
 
     async with httpx.AsyncClient() as client:
@@ -56,8 +72,10 @@ async def push_message(text: str):
             )
             if res.status_code != 200:
                 logger.error(f"[LINE] 推播失敗: {res.status_code} {res.text}")
+                _log_notif_failure("(broadcast)", text, f"HTTP {res.status_code}: {res.text[:100]}")
         except Exception as e:
             logger.error(f"[LINE] 推播例外：{e}")
+            _log_notif_failure("(broadcast)", text, str(e))
 
 
 async def push_to_user(line_user_id: str, text: str):
@@ -66,6 +84,7 @@ async def push_to_user(line_user_id: str, text: str):
 
     if not token:
         logger.warning("[LINE] 未設定 CHANNEL_ACCESS_TOKEN，跳過推播")
+        _log_notif_failure(line_user_id or "(unknown)", text, "未設定 CHANNEL_ACCESS_TOKEN")
         return
     if not line_user_id:
         logger.warning("[LINE] push_to_user: line_user_id 為空，跳過")
@@ -90,8 +109,10 @@ async def push_to_user(line_user_id: str, text: str):
                     f"[LINE] push_to_user 失敗 ({line_user_id}): "
                     f"{res.status_code} {res.text}"
                 )
+                _log_notif_failure(line_user_id, text, f"HTTP {res.status_code}: {res.text[:100]}")
         except Exception as e:
             logger.error(f"[LINE] push_to_user 例外：{e}")
+            _log_notif_failure(line_user_id, text, str(e))
 
 
 def _verify_signature(body: bytes, signature: str) -> bool:

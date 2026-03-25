@@ -24,6 +24,7 @@ from .fixtures import router as fixtures_router
 from .fixture_notifications import scan_overdue_loans, notify_monthly_inventory, scan_replacement_reminders
 from .purchase_orders import router as purchase_orders_router
 from .schedules import router as schedules_router, blocked_router as device_blocked_router
+from .notification_failures import router as notif_failures_router
 from .models import SessionLocal, DeviceData, ErrorLog, DeviceState
 from .standards import get_ramp_rate, get_standard
 from .utils import _now_utc, _save_device_state
@@ -119,6 +120,7 @@ app.include_router(fixtures_router)
 app.include_router(purchase_orders_router)
 app.include_router(schedules_router)
 app.include_router(device_blocked_router)
+app.include_router(notif_failures_router)
 
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
 allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]

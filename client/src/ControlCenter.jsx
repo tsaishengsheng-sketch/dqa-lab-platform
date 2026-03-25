@@ -670,6 +670,19 @@ const TABS = [
 
 function CenterPanel({ role, activeTab, setActiveTab, selectedDevice }) {
   const visibleTabs = TABS.filter((t) => !t.adminOnly || role === "admin");
+  const [failureCount, setFailureCount] = useState(0);
+
+  useEffect(() => {
+    if (role !== "admin") return;
+    const fetchCount = () => {
+      api.get("/api/notification-failures/").then((res) => {
+        setFailureCount(res.data.length);
+      }).catch(() => {});
+    };
+    fetchCount();
+    const timer = setInterval(fetchCount, 60000);
+    return () => clearInterval(timer);
+  }, [role]);
 
   return (
     <div
@@ -712,6 +725,21 @@ function CenterPanel({ role, activeTab, setActiveTab, selectedDevice }) {
             }}
           >
             {t.label}
+            {t.key === "users" && failureCount > 0 && (
+              <span style={{
+                marginLeft: 5,
+                background: "#da3633",
+                color: "#fff",
+                fontSize: 10,
+                fontWeight: 700,
+                borderRadius: 8,
+                padding: "1px 5px",
+                lineHeight: "14px",
+                verticalAlign: "middle",
+              }}>
+                {failureCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
