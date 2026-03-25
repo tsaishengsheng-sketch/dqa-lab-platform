@@ -266,14 +266,14 @@ def _create_flex_detail_card(device_id: str, data: Dict[str, Any]) -> Dict:
     }
 
 
-async def push_sop_notification(operator_name: str, text: str):
-    """推播 SOP 通知給操作人員，找不到個人 LINE ID 時 fallback 推給環境變數設定的預設帳號。"""
-    if operator_name:
+async def push_sop_notification(operator_user_id: Optional[int], text: str):
+    """推播 SOP 通知給操作人員（以 user_id 精確查找），找不到個人 LINE ID 時 fallback 推給環境變數設定的預設帳號。"""
+    if operator_user_id:
         try:
             with SessionLocal() as db:
                 user = (
                     db.query(User)
-                    .filter(User.display_name == operator_name, User.is_active == True)
+                    .filter(User.id == operator_user_id, User.is_active == True)
                     .first()
                 )
                 if user and user.line_user_id:

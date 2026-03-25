@@ -8,7 +8,7 @@ import shutil
 from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-from .models import SessionLocal, SopTemplate, DeviceState, SopExecution, StepRecord
+from .models import SessionLocal, SopTemplate, DeviceState, SopExecution, StepRecord, User
 from .standards import STANDARDS_AND_SOPS, get_standard_tree
 from .utils import _save_device_state
 from .line import push_message, push_to_user, push_sop_notification
@@ -70,10 +70,25 @@ def get_standards_tree():
 # 啟動 SOP 路由
 @router.post("/start")
 async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
-    """啟動指定設備的 SOP 測試"""
+    """啟動指定設備的 SOP 測試（engineer / keeper / admin 才可操作）"""
+    role = getattr(request.state, "user_role", None)
+    if role not in ("engineer", "keeper", "admin"):
+        raise HTTPException(status_code=403, detail="無操作權限")
+
     sop_id: str = payload.get("sop_id", "")
     device_id: str = payload.get("device_id", "CH-01")
     operator: str = payload.get("operator", "")
+    operator_user_id: Optional[int] = getattr(request.state, "user_id", None)
+
+    # 若前端未填 operator，從登入帳號自動帶入顯示名稱
+    if not operator and operator_user_id:
+        try:
+            with SessionLocal() as db:
+                u = db.query(User).filter(User.id == operator_user_id).first()
+                if u:
+                    operator = u.display_name or ""
+        except Exception:
+            pass
 
     if not sop_id:
         raise HTTPException(status_code=400, detail="sop_id 不能為空")
@@ -114,6 +129,7 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
             "started_at": now,
             "total_steps": len(std_data.get("steps", [])),
             "operator": operator.strip() if operator else "",
+            "operator_user_id": operator_user_id,
             "sim_phase": "idle",
             "sim_cycle": 0,
         }
@@ -126,13 +142,13 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
     )
 
     # Phase 9-4：啟動通知
-    op = operator.strip() if operator else ""
+    op_display = operator.strip() if operator else "未填寫"
     notif_text = (
         f"🔬 [{device_id}] 已啟動測試：{sop_name}\n"
-        f"操作人員：{op or '未填寫'}\n"
+        f"操作人員：{op_display}\n"
         f"請記得拍上架時照片 📷"
     )
-    asyncio.create_task(push_sop_notification(op, notif_text))
+    asyncio.create_task(push_sop_notification(operator_user_id, notif_text))
 
     return {"status": "success", "message": f"{device_id} 已啟動 {sop_name}"}
 
@@ -164,12 +180,17 @@ class ExecutionResponse(BaseModel):
 
 
 @execution_router.post("/", response_model=ExecutionResponse)
-def create_execution(data: ExecutionCreate):
+def create_execution(data: ExecutionCreate, request: Request):
+    role = getattr(request.state, "user_role", None)
+    if role not in ("engineer", "keeper", "admin"):
+        raise HTTPException(status_code=403, detail="無操作權限")
+    operator_user_id = getattr(request.state, "user_id", None)
     with SessionLocal() as db:
         execution = SopExecution(
             sop_id=data.sop_id,
             device_id=data.device_id,
             operator=data.operator,
+            operator_user_id=operator_user_id,
             test_started_at=data.test_started_at,
             test_ended_at=data.test_ended_at,
         )
@@ -249,10 +270,14 @@ def get_execution(execution_id: int):
 @execution_router.post("/{execution_id}/photos")
 async def upload_execution_photo(
     execution_id: int,
+    request: Request,
     photo_type: str = Form(...),  # "before" | "after"
     file: UploadFile = File(...),
 ):
-    """補充照片：上架前照（before）或測試結束照（after）"""
+    """補充照片：上架時照片（before）或測試結束照（after）"""
+    role = getattr(request.state, "user_role", None)
+    if role not in ("engineer", "keeper", "admin"):
+        raise HTTPException(status_code=403, detail="無操作權限")
     if photo_type not in ("before", "after"):
         raise HTTPException(status_code=400, detail="photo_type 必須為 before 或 after")
 

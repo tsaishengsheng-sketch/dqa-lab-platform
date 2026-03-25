@@ -192,6 +192,7 @@ class SopExecution(Base):
     sop_id: Mapped[str] = mapped_column(String, index=True)
     device_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     operator: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    operator_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     test_started_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime, nullable=True
     )

@@ -59,6 +59,7 @@ async def lifespan(app: FastAPI):
                 "completed_steps": s.completed_steps or 0,
                 "started_at": started_at,
                 "operator": "",
+                "operator_user_id": None,
                 "sim_phase": s.sim_phase or "idle",
                 "sim_cycle": s.sim_cycle or 0,
             }
@@ -75,6 +76,7 @@ async def lifespan(app: FastAPI):
                 "completed_steps": 0,
                 "started_at": None,
                 "operator": "",
+                "operator_user_id": None,
                 "sim_phase": "idle",
                 "sim_cycle": 0,
             }
@@ -327,7 +329,7 @@ async def get_latest():
 
 
 @app.post("/api/stop/{device_id}/emergency")
-async def emergency_stop(device_id: str):
+async def emergency_stop(device_id: str, request: Request):
     device = _get_device(device_id)
 
     if device.get("status") == "EMERGENCY":
@@ -337,6 +339,7 @@ async def emergency_stop(device_id: str):
         }
 
     operator = device.get("operator", "") or "未填寫"
+    operator_user_id = device.get("operator_user_id")
     sop_name = device.get("running_sop_name", "") or "未知測試"
 
     with SessionLocal() as db:
@@ -366,6 +369,7 @@ async def emergency_stop(device_id: str):
             "started_at": None,
             "total_steps": 0,
             "operator": "",
+            "operator_user_id": None,
             "sim_phase": "idle",
             "sim_cycle": 0,
         }
@@ -375,7 +379,7 @@ async def emergency_stop(device_id: str):
 
     asyncio.create_task(
         push_sop_notification(
-            operator,
+            operator_user_id,
             f"🚨 [{device_id}] 緊急停止已觸發\n"
             f"測試：{sop_name}\n"
             f"操作人員：{operator}\n"
@@ -583,7 +587,7 @@ async def data_simulator():
                 sim_phase_after = item.get("sim_phase", "")
                 if sim_phase_after != sim_phase_before:
                     notif_set = sop_notif_sent.setdefault(device_id, set())
-                    op = item.get("operator", "")
+                    op_user_id = item.get("operator_user_id")
                     sop_name_for_notif = item.get("running_sop_name", "測試")
 
                     if sim_phase_after == "dwell_high" and "dwell_high" not in notif_set:
@@ -593,7 +597,7 @@ async def data_simulator():
                             f"測試：{sop_name_for_notif}\n"
                             f"進入恆溫停留，計時開始"
                         )
-                        asyncio.create_task(push_sop_notification(op, notif_text))
+                        asyncio.create_task(push_sop_notification(op_user_id, notif_text))
 
                     elif sim_phase_after == "ramp_to_ambient" and "ramp_to_ambient" not in notif_set:
                         notif_set.add("ramp_to_ambient")
@@ -602,7 +606,7 @@ async def data_simulator():
                             f"報告已自動存檔，回常溫中\n"
                             f"請補充結束照片 📷"
                         )
-                        asyncio.create_task(push_sop_notification(op, notif_text))
+                        asyncio.create_task(push_sop_notification(op_user_id, notif_text))
 
                 item["temperature"] = round(new_temp + random.uniform(-0.1, 0.1), 2)
 
@@ -645,6 +649,7 @@ async def data_simulator():
                     )
                 else:
                     item["temperature"] = 25.0
+                    finishing_op_user_id = item.get("operator_user_id")
                     item.update(
                         {
                             "status": "IDLE",
@@ -652,6 +657,7 @@ async def data_simulator():
                             "running_sop_id": None,
                             "standard_id": None,
                             "operator": "",
+                            "operator_user_id": None,
                             "sim_phase": "idle",
                             "sim_cycle": 0,
                         }
@@ -659,7 +665,10 @@ async def data_simulator():
                     _save_device_state(device_id, item)
                     print(f"✅ [{device_id}] 降溫完成，回待機。")
                     asyncio.create_task(
-                        push_message(f"✅ [{device_id}] 測試完成，已回到待機狀態。")
+                        push_sop_notification(
+                            finishing_op_user_id,
+                            f"✅ [{device_id}] 測試完成，已回到待機狀態。"
+                        )
                     )
                 item["humidity"] = round(
                     max(0.0, min(100.0, current_humi + random.uniform(-0.2, 0.2))), 1
