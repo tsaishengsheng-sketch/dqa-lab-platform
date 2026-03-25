@@ -109,8 +109,13 @@ def _calc_condition_hours(sop_id: str) -> float:
         low_temp = float(low_temp)
         ramp_ambient_to_low = abs(ambient - low_temp) / ramp_rate
         ramp_low_to_high = abs(high_temp - low_temp) / ramp_rate
-        one_cycle_min = ramp_low_to_high + dwell_min + ramp_low_to_high + dwell_min
-        total_min = ramp_ambient_to_low + one_cycle_min * cycles + ramp_ambient_to_low
+        if ramp_low_to_high < 0.01:
+            # 單點冷測（Ab/Ad）：降溫 + 停留 + 升溫
+            total_min = ramp_ambient_to_low + dwell_min * cycles + ramp_ambient_to_low
+        else:
+            # 溫度循環（Nb/Na）：低↔高各有停留
+            one_cycle_min = ramp_low_to_high + dwell_min + ramp_low_to_high + dwell_min
+            total_min = ramp_ambient_to_low + one_cycle_min * cycles + ramp_ambient_to_low
     elif low_temp is not None:
         low_temp = float(low_temp)
         ramp_up = abs(high_temp - ambient) / ramp_rate
@@ -236,6 +241,31 @@ def _auto_assign(conditions: List[str], db) -> tuple[str, datetime.datetime, dat
 
 
 # ── Schedules 端點 ─────────────────────────────────────────────────────────
+
+
+@router.get("/preview")
+def preview_schedule(conditions: str, device_id: Optional[str] = None):
+    """預覽排程時間（不寫入 DB）。conditions 為逗號分隔的 sop_id 清單。"""
+    cond_list = [c.strip() for c in conditions.split(",") if c.strip()]
+    if not cond_list:
+        raise HTTPException(status_code=400, detail="至少需要一個測試條件")
+
+    total_hours = _calc_total_hours(cond_list)
+
+    with SessionLocal() as db:
+        if device_id and device_id in DEVICE_IDS:
+            start = _find_earliest_slot(device_id, total_hours, db)
+            assigned_device = device_id
+        else:
+            assigned_device, start, _ = _auto_assign(cond_list, db)
+
+    end = start + datetime.timedelta(hours=total_hours)
+    return {
+        "device_id": assigned_device,
+        "start_time": start.isoformat(),
+        "end_time": end.isoformat(),
+        "total_hours": round(total_hours, 2),
+    }
 
 
 @router.get("/standards-tree")

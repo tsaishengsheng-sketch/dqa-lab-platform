@@ -89,19 +89,23 @@ class ExtensionRequest(BaseModel):
 
 
 def _calc_loaned(db, fixture_id: int) -> int:
-    return (
-        db.query(FixtureLoan)
+    from sqlalchemy import func
+    result = (
+        db.query(func.sum(FixtureLoan.quantity))
         .filter(FixtureLoan.fixture_id == fixture_id, FixtureLoan.status == "loaned")
-        .count()
+        .scalar()
     )
+    return result or 0
 
 
 def _calc_damaged(db, fixture_id: int) -> int:
-    return (
-        db.query(FixtureLoan)
+    from sqlalchemy import func
+    result = (
+        db.query(func.sum(FixtureLoan.quantity))
         .filter(FixtureLoan.fixture_id == fixture_id, FixtureLoan.status == "damaged")
-        .count()
+        .scalar()
     )
+    return result or 0
 
 
 def _calc_replacement_date(f: Fixture) -> Optional[str]:
@@ -199,9 +203,12 @@ def get_summary():
         now = datetime.datetime.now(datetime.timezone.utc)
         today_end = now.replace(hour=23, minute=59, second=59)
 
+        from sqlalchemy import func as _func
         total_loaned = (
-            db.query(FixtureLoan).filter(FixtureLoan.status == "loaned").count()
-        )
+            db.query(_func.sum(FixtureLoan.quantity))
+            .filter(FixtureLoan.status == "loaned")
+            .scalar()
+        ) or 0
 
         due_today = (
             db.query(FixtureLoan)
@@ -369,6 +376,40 @@ def list_overdue_loans():
                     "overdue_days": overdue_days,
                 }
             )
+        return result
+    finally:
+        db.close()
+
+
+@router.get("/loans/damaged")
+def list_damaged_lost_loans():
+    """損壞或遺失的治具紀錄"""
+    db = SessionLocal()
+    try:
+        loans = (
+            db.query(FixtureLoan)
+            .filter(FixtureLoan.status.in_(["damaged", "lost"]))
+            .order_by(FixtureLoan.return_date.desc())
+            .all()
+        )
+        result = []
+        for loan in loans:
+            f = db.query(Fixture).filter(Fixture.id == loan.fixture_id).first()
+            result.append({
+                "id": loan.id,
+                "fixture_id": loan.fixture_id,
+                "fixture_interface": f.interface_type if f else "",
+                "fixture_form_factor": f.form_factor if f else "",
+                "borrower_name": loan.borrower_name,
+                "device_id": loan.device_id,
+                "project_name": loan.project_name,
+                "quantity": loan.quantity,
+                "loan_date": loan.loan_date.isoformat() if loan.loan_date else None,
+                "return_date": loan.return_date.isoformat() if loan.return_date else None,
+                "status": loan.status,
+                "return_condition": loan.return_condition,
+                "keeper_note": loan.keeper_note,
+            })
         return result
     finally:
         db.close()

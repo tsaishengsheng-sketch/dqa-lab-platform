@@ -470,7 +470,23 @@ function ScheduleDetailModal({ schedule, role, onClose, onUpdated, onDeleted }) 
   const [note, setNote] = useState(schedule.note || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [preview, setPreview] = useState(null);   // { device_id, start_time, end_time }
+  const [previewing, setPreviewing] = useState(false);
   const canEdit = role === "admin" || role === "keeper";
+  const isPending = schedule.status === "待審核";
+
+  // 待審核時自動抓預覽（modal 開啟 or 設備選擇改變時）
+  useEffect(() => {
+    if (!isPending) return;
+    const conditions = schedule.conditions?.join(",") || "";
+    if (!conditions) return;
+    setPreviewing(true);
+    api
+      .get("/api/schedules/preview", { params: { conditions, device_id: deviceId || undefined } })
+      .then((r) => setPreview(r.data))
+      .catch(() => setPreview(null))
+      .finally(() => setPreviewing(false));
+  }, [deviceId, isPending, schedule.conditions]);
 
   async function confirm() {
     setSaving(true);
@@ -547,9 +563,32 @@ function ScheduleDetailModal({ schedule, role, onClose, onUpdated, onDeleted }) 
             schedule.condition_names?.join(" → ") || schedule.conditions?.join(" → ") || "—"
           } />
           <InfoRow label="預估時長" value={fmtHours(schedule.total_hours)} />
-          <InfoRow label="指定設備" value={schedule.device_id || "（自動排程）"} />
-          <InfoRow label="開始時間" value={fmtDt(schedule.start_time)} />
-          <InfoRow label="結束時間" value={fmtDt(schedule.end_time)} />
+          <InfoRow
+            label="指定設備"
+            value={
+              isPending
+                ? previewing ? "計算中..." : (preview?.device_id || "—")
+                : schedule.device_id || "（自動排程）"
+            }
+          />
+          <InfoRow
+            label="開始時間"
+            value={
+              isPending
+                ? previewing ? "計算中..." : (preview ? fmtDt(preview.start_time) : "—")
+                : fmtDt(schedule.start_time)
+            }
+            muted={isPending}
+          />
+          <InfoRow
+            label="結束時間"
+            value={
+              isPending
+                ? previewing ? "計算中..." : (preview ? fmtDt(preview.end_time) : "—")
+                : fmtDt(schedule.end_time)
+            }
+            muted={isPending}
+          />
           <InfoRow label="申請時間" value={fmtDt(schedule.created_at)} />
 
           {canEdit && (
@@ -721,11 +760,11 @@ function LabelInput({ label, value, onChange, placeholder }) {
   );
 }
 
-function InfoRow({ label, value }) {
+function InfoRow({ label, value, muted }) {
   return (
     <div style={{ display: "flex", gap: 8, fontSize: 13 }}>
       <span style={{ color: "#8b949e", minWidth: 80, flexShrink: 0 }}>{label}</span>
-      <span style={{ color: "#cdd9e5", wordBreak: "break-word" }}>{value}</span>
+      <span style={{ color: muted ? "#6e7681" : "#cdd9e5", wordBreak: "break-word", fontStyle: muted ? "italic" : "normal" }}>{value}</span>
     </div>
   );
 }

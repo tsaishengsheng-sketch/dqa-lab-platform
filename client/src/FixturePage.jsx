@@ -1027,6 +1027,14 @@ export default function FixturePage({ active, role }) {
             )}
           </button>
         )}
+        {canOperate && (
+          <button
+            style={tabStyle("damaged")}
+            onClick={() => setActiveTab("damaged")}
+          >
+            損壞／遺失
+          </button>
+        )}
       </div>
 
       {activeTab === "inventory" && (
@@ -1412,6 +1420,8 @@ export default function FixturePage({ active, role }) {
         />
       )}
 
+      {activeTab === "damaged" && <DamagedList />}
+
       {activeTab === "purchase" && (
         <PurchaseTab
           orders={purchaseOrders}
@@ -1584,6 +1594,117 @@ function OverdueList({ canOperate, onReturn }) {
                 )}
               </tr>
             ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── 損壞／遺失 tab ───────────────────────────────────────────
+function DamagedList() {
+  const [loans, setLoans] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .get("/api/fixtures/loans/damaged")
+      .then((r) => setLoans(r.data))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const thStyle = {
+    padding: "8px 12px",
+    fontSize: 11,
+    color: "#8b949e",
+    fontWeight: 600,
+    textAlign: "left",
+    borderBottom: "1px solid #21262d",
+  };
+  const tdStyle = {
+    padding: "9px 12px",
+    fontSize: 13,
+    color: "#cdd9e5",
+    borderBottom: "1px solid #21262d",
+  };
+
+  const conditionLabel = {
+    damaged: { label: "損壞", color: "#f0a500" },
+    lost: { label: "遺失", color: "#f85149" },
+  };
+
+  return (
+    <div
+      style={{
+        background: "#161b22",
+        border: "1px solid #30363d",
+        borderRadius: 8,
+        overflow: "hidden",
+      }}
+    >
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ background: "#21262d" }}>
+            <th style={thStyle}>治具</th>
+            <th style={thStyle}>借用人</th>
+            <th style={thStyle}>綁定設備</th>
+            <th style={thStyle}>專案</th>
+            <th style={thStyle}>數量</th>
+            <th style={thStyle}>歸還日</th>
+            <th style={thStyle}>狀態</th>
+            <th style={thStyle}>備註</th>
+          </tr>
+        </thead>
+        <tbody>
+          {loading ? (
+            <tr>
+              <td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: "#8b949e" }}>
+                載入中...
+              </td>
+            </tr>
+          ) : loans.length === 0 ? (
+            <tr>
+              <td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: "#3fb950" }}>
+                目前無損壞或遺失紀錄
+              </td>
+            </tr>
+          ) : (
+            loans.map((loan) => {
+              const cond = conditionLabel[loan.status] || { label: loan.status, color: "#8b949e" };
+              return (
+                <tr key={loan.id}>
+                  <td style={tdStyle}>
+                    {loan.fixture_interface} — {loan.fixture_form_factor}
+                  </td>
+                  <td style={tdStyle}>{loan.borrower_name}</td>
+                  <td style={{ ...tdStyle, color: "#8b949e" }}>{loan.device_id || "—"}</td>
+                  <td style={{ ...tdStyle, color: "#8b949e" }}>{loan.project_name || "—"}</td>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>{loan.quantity}</td>
+                  <td style={{ ...tdStyle, color: "#8b949e" }}>
+                    {loan.return_date
+                      ? new Date(loan.return_date).toLocaleDateString("zh-TW")
+                      : "—"}
+                  </td>
+                  <td style={tdStyle}>
+                    <span
+                      style={{
+                        background: cond.color + "22",
+                        color: cond.color,
+                        borderRadius: 4,
+                        padding: "2px 8px",
+                        fontSize: 11,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {cond.label}
+                    </span>
+                  </td>
+                  <td style={{ ...tdStyle, color: "#8b949e", fontSize: 12 }}>
+                    {loan.keeper_note || "—"}
+                  </td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>
