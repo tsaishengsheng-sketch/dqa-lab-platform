@@ -26,7 +26,7 @@
 ## 核心功能
 
 ### 🖥️ 控制中心（三欄佈局）
-TopBar 設備摘要列、LeftPanel 設備卡片與紀錄連結、CenterPanel 多 tab 切換（SOP / 治具 / 異常 / 人員管理）、RightPanel 常駐 AI 側欄（含迷你對話切換列）。多台溫箱設備即時監控，顯示溫濕度、運行狀態、倒數計時，支援雙 Y 軸趨勢圖與六種狀態指示。
+TopBar 設備摘要列、LeftPanel 設備卡片與紀錄連結、CenterPanel 多 tab 切換（設備 / 治具 / 排程 / 人員管理）、RightPanel 常駐 AI 側欄（含迷你對話切換列）。多台溫箱設備即時監控，顯示溫濕度、運行狀態、倒數計時，支援雙 Y 軸趨勢圖與六種狀態指示。
 
 ### 🔧 SOP 執行引擎
 三步驟選擇法規 → 版本 → 測試條件，自動載入參數。支援進度持久化、步驟鎖定、SP+PV 波形疊加、ISO 17025 報告下載。
@@ -36,6 +36,9 @@ TopBar 設備摘要列、LeftPanel 設備卡片與紀錄連結、CenterPanel 多
 
 ### 🤖 AI 法規諮詢
 自然語言查詢「EN 50155 和 IEC 60068 的濕熱循環有什麼差異？」，系統透過 RAG 檢索法規內容、對比參數、推論說明。對話歷史本機儲存，支援多輪上下文。控制中心右欄常駐顯示迷你版，含快速問題按鈕與對話切換（‹/›箭頭 + 新增 / 清除），無需離開設備監控畫面。
+
+### 🗓️ 排程系統（甘特圖）
+工程師提交排程申請（專案號碼、樣品名稱、測試條件逐一勾選），管理者審核後系統自動計算總時長、選擇最早可用設備排入。甘特圖以設備為列、時間為軸，色塊按狀態著色（待審核 / 已確認 / 進行中 / 已完成 / 已取消）。管理者可標記設備不可用時段（維修 / 校正），自動排程時跳過衝突。
 
 ### 🚨 異常與通知
 緊急停止事件自動記錄、步驟進度快照。LINE Bot 推播逾期提醒、借出通知、月盤點提醒、汰換提醒。
@@ -162,6 +165,7 @@ dqa-lab-digital-twin/
 │   │   ├── purchase_orders.py      # 採購清單 CRUD
 │   │   ├── fixture_notifications.py # LINE Bot 推播排程（含汰換提醒）
 │   │   ├── line.py                 # LINE Messaging API 推播
+│   │   ├── schedules.py            # 排程系統 API（申請 / 審核 / 自動排程 / 甘特圖）
 │   │   ├── reports.py              # ISO 17025 相容報告生成
 │   │   └── serial_reader.py        # RS-485 串列通訊（Phase 3 準備）
 │   ├── alembic/                    # 資料庫遷移管理
@@ -179,6 +183,7 @@ dqa-lab-digital-twin/
 │   │   ├── SOPPage.jsx             # SOP 主頁面
 │   │   ├── ErrorLog.jsx            # 異常紀錄頁
 │   │   ├── FixturePage.jsx         # 治具管理頁
+│   │   ├── SchedulePage.jsx        # 排程系統頁（甘特圖 + 申請 / 審核 Modal）
 │   │   ├── UsersPage.jsx           # 人員管理頁（admin only）
 │   │   ├── Dashboard.jsx           # 保留，已不在主 nav 顯示
 │   │   ├── AIPage.jsx              # 保留，已不在主 nav 顯示
@@ -212,6 +217,7 @@ dqa-lab-digital-twin/
 - **SOP 管理**：`POST /api/sop/execute`、`GET /api/sop/{id}/report`
 - **治具管理**：`GET /api/fixtures/`、`GET /api/fixtures/summary`、`GET /api/fixtures/loans/active`、`GET /api/fixtures/loans/overdue`、`POST /api/fixtures/loans`、`POST /api/fixtures/loans/{id}/return`、`POST /api/fixtures/loans/{id}/extend`、`POST /api/fixtures/import`、`POST /api/fixtures/{id}/inventory`
 - **採購清單**：`GET /api/purchase_orders`、`POST /api/purchase_orders`、`PATCH /api/purchase_orders/{id}/receive`
+- **排程系統**：`GET /api/schedules/gantt`、`GET /api/schedules`、`POST /api/schedules`、`PATCH /api/schedules/{id}`、`DELETE /api/schedules/{id}`、`GET /api/schedules/standards-tree`、`GET /api/device-blocked-periods`、`POST /api/device-blocked-periods`、`DELETE /api/device-blocked-periods/{id}`
 - **AI 諮詢**：`POST /api/ai/query`（串流）
 - **Auth**：`POST /api/auth/login`、`POST /api/auth/demo-login`、`GET /api/auth/me`、`GET /api/auth/users`、`POST /api/auth/users`、`PATCH /api/auth/users/{id}`、`DELETE /api/auth/users/{id}`、`GET /api/auth/demo-tokens`、`POST /api/auth/demo-tokens`、`DELETE /api/auth/demo-tokens/{id}`、`PATCH /api/auth/demo-tokens/{id}/toggle`
 - **異常紀錄**：`GET /api/error-logs`
@@ -251,7 +257,8 @@ make clean        # 清理殘留程序
 - [x] 訪客 Token 管理（管理者 UI 生成、期限 / 使用次數控制、use_count 僅登入遞增一次）
 - [x] 訪客模式功能開放（AI 諮詢全開放、治具唯讀、逾期未還 / 採購清單 tab 隱藏）
 - [x] AI 快速按鈕隨機池（16 題隨機抽 4，每次點擊後刷新；訪客每次登入清空對話紀錄）
-- [ ] 排程系統（甘特圖 + 自動時長計算 + 設備衝突檢查）
+- [x] 排程系統（甘特圖 + 自動排程 + 設備不可用時段 + 三層條件選擇器）
+- [ ] SOP 流程重構（步驟自動確認 + 自動存報告 + 照片補充 + LINE 推播）
 - [ ] RS-485 真實設備通訊（Phase 3）
 - [ ] JWT 完整替換（單一 Authorization: Bearer header）
 - [ ] 密碼雜湊升級（passlib bcrypt 取代 SHA-256）
