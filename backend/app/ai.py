@@ -248,7 +248,7 @@ def _build_gemini_payload(messages: list, system_prompt: str) -> dict:
         "contents": contents,
         "generationConfig": {
             "temperature": 0.3,
-            "maxOutputTokens": 1500,
+            "maxOutputTokens": 4096,
         },
     }
 

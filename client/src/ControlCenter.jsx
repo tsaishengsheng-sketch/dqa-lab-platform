@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import api from "./api";
 import SOPPage from "./SOPPage";
 import FixturePage from "./FixturePage";
+import SchedulePage from "./SchedulePage";
 import UsersPage from "./UsersPage";
 import ErrorLog from "./ErrorLog";
 import RightPanel from "./components/control/RightPanel";
@@ -400,16 +401,8 @@ function CenterPanel({ role, activeTab, setActiveTab, selectedDevice }) {
         <div style={{ display: activeTab === "fixture" ? "block" : "none", height: "100%" }}>
           <FixturePage active={activeTab === "fixture"} role={role} />
         </div>
-        <div
-          style={{
-            display: activeTab === "schedule" ? "flex" : "none",
-            height: "100%", alignItems: "center", justifyContent: "center",
-            flexDirection: "column", gap: 8,
-          }}
-        >
-          <div style={{ fontSize: 28, color: "#30363d" }}>🗓</div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "#484f58" }}>排程系統</div>
-          <div style={{ fontSize: 12, color: "#30363d" }}>開發中，敬請期待</div>
+        <div style={{ display: activeTab === "schedule" ? "block" : "none", height: "100%" }}>
+          <SchedulePage active={activeTab === "schedule"} role={role} />
         </div>
         {role === "admin" && (
           <div style={{ display: activeTab === "users" ? "block" : "none", height: "100%" }}>

@@ -276,6 +276,67 @@ class ErrorLog(Base):
     )
 
 
+# ---------- 排程申請單 ----------
+class Schedule(Base):
+    __tablename__ = "schedules"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    project_number: Mapped[str] = mapped_column(String)
+    sample_name: Mapped[str] = mapped_column(String)
+    applicant_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    applicant_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    device_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    standard: Mapped[str] = mapped_column(String)  # e.g. "IEC 60068"
+    conditions: Mapped[str] = mapped_column(Text)  # JSON list of sop_id strings
+    start_time: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    end_time: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    # 待審核 / 已確認 / 進行中 / 已完成 / 已取消
+    status: Mapped[str] = mapped_column(String, default="待審核", index=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    confirmed_by: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("ix_schedules_status", "status"),
+        Index("ix_schedules_device_id", "device_id"),
+    )
+
+
+# ---------- 設備不可用時段 ----------
+class DeviceBlockedPeriod(Base):
+    __tablename__ = "device_blocked_periods"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    device_id: Mapped[str] = mapped_column(String, index=True)
+    start_time: Mapped[datetime.datetime] = mapped_column(DateTime)
+    end_time: Mapped[datetime.datetime] = mapped_column(DateTime)
+    reason: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+
 # ---------- 資料庫初始化 ----------
 def init_db():
     Base.metadata.create_all(bind=engine)
