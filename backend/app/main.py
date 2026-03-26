@@ -346,6 +346,7 @@ async def emergency_stop(device_id: str, request: Request):
     sop_name = device.get("running_sop_name", "") or "未知測試"
 
     with SessionLocal() as db:
+        # 記錄緊急停止事件
         db.add(
             ErrorLog(
                 device_id=device_id,
@@ -360,6 +361,16 @@ async def emergency_stop(device_id: str, request: Request):
                 created_at=_now_utc(),
             )
         )
+
+        # 更新對應的 SopExecution 記錄，設定 test_ended_at
+        execution = db.query(SopExecution).filter(
+            SopExecution.device_id == device_id,
+            SopExecution.test_ended_at == None,
+            SopExecution.test_started_at != None
+        ).first()
+        if execution:
+            execution.test_ended_at = _now_utc()
+
         db.commit()
 
     device.update(
