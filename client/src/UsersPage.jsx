@@ -121,6 +121,8 @@ function UserModal({ user, onClose, onSaved }) {
             style={inputStyle}
           >
             <option value="engineer">工程師</option>
+            <option value="keeper">保管人</option>
+            <option value="admin">管理者</option>
           </select>
         </div>
 

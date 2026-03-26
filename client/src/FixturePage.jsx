@@ -1269,10 +1269,10 @@ export default function FixturePage({ active, role }) {
               background: "#161b22",
               border: "1px solid #30363d",
               borderRadius: 8,
-              overflow: "hidden",
+              overflowX: "auto",
             }}
           >
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
               <thead>
                 <tr style={{ background: "#21262d" }}>
                   {[
