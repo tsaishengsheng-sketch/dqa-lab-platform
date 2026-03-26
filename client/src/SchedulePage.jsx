@@ -363,11 +363,28 @@ function NewScheduleModal({ standardsTree, onClose, onCreated }) {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
 
   const totalHours = form.conditions.reduce((acc, sop_id) => {
     const std = findStd(standardsTree, sop_id);
     return acc + (std?.estimated_hours || 0);
   }, 0) + Math.max(0, form.conditions.length - 1) * 0.5;
+
+  // 條件改變時自動獲取預覽（時間）
+  useEffect(() => {
+    if (form.conditions.length === 0) {
+      setPreview(null);
+      return;
+    }
+    const conditions = form.conditions.join(",");
+    setPreviewing(true);
+    api
+      .get("/api/schedules/preview", { params: { conditions } })
+      .then((r) => setPreview(r.data))
+      .catch(() => setPreview(null))
+      .finally(() => setPreviewing(false));
+  }, [form.conditions]);
 
   function findStd(tree, sop_id) {
     for (const std of Object.values(tree)) {
@@ -431,6 +448,7 @@ function NewScheduleModal({ standardsTree, onClose, onCreated }) {
           </div>
 
           {form.conditions.length > 0 && (
+            <>
             <div style={{
               background: "#161b22", borderRadius: 6, padding: "10px 12px",
               border: "1px solid #30363d",
@@ -455,6 +473,27 @@ function NewScheduleModal({ standardsTree, onClose, onCreated }) {
                 <span style={{ fontSize: 10, marginLeft: 6 }}>（含 {Math.max(0, form.conditions.length - 1)} × 30min 緩衝）</span>
               </div>
             </div>
+
+            {/* 預估時間預覽（申請人用）*/}
+            {previewing ? (
+              <div style={{ background: "#161b22", borderRadius: 6, padding: "10px 12px", border: "1px solid #30363d", color: "#8b949e", fontSize: 12 }}>
+                ⏳ 計算預估時間中...
+              </div>
+            ) : preview ? (
+              <div style={{
+                background: "#1a2d1a", borderRadius: 6, padding: "10px 12px",
+                border: "1px solid #3fb950", borderLeft: "3px solid #3fb950",
+              }}>
+                <div style={{ fontSize: 12, color: "#8b949e", marginBottom: 6 }}>📋 預估時間（待管理員分配設備）</div>
+                <div style={{ fontSize: 12, color: "#cdd9e5", marginBottom: 4 }}>
+                  🕐 預計開始：<span style={{ color: "#79c0ff" }}>{fmtDt(preview.start_time)}</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#cdd9e5" }}>
+                  🏁 預計結束：<span style={{ color: "#79c0ff" }}>{fmtDt(preview.end_time)}</span>
+                </div>
+              </div>
+            ) : null}
+            </>
           )}
 
           <LabelInput label="備註" value={form.note}
