@@ -277,8 +277,9 @@ def update_user(user_id: int, body: UserUpdateBody, request: Request):
             if body.role not in ("admin", "keeper", "engineer"):
                 raise HTTPException(status_code=400, detail="role 必須是 admin / keeper / engineer")
             user.role = body.role
-        if body.line_user_id is not None:
-            user.line_user_id = body.line_user_id or None
+        # 使用 __fields_set__ 檢測是否被顯式傳入（包括 null）
+        if "line_user_id" in body.__fields_set__:
+            user.line_user_id = body.line_user_id
         if body.is_active is not None:
             user.is_active = body.is_active
         db.commit()

@@ -8,7 +8,12 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from .models import SessionLocal, User, LineBindRequest, NotificationFailure
+
+# --- Payloads ---
+class ApproveBindRequestPayload(BaseModel):
+    user_id: int
 
 # --- 設定 ---
 logger = logging.getLogger("line_bot")
@@ -591,10 +596,15 @@ async def list_bind_requests(request: Request):
 
 
 @router.post("/bind-requests/{req_id}/approve")
-async def approve_bind_request(req_id: int, request: Request):
-    """核准綁定申請（admin only）"""
+async def approve_bind_request(req_id: int, payload: ApproveBindRequestPayload, request: Request):
+    """核准綁定申請（admin only）
+
+    body: { "user_id": <int> }
+    """
     if getattr(request.state, "user_role", None) != "admin":
         raise HTTPException(status_code=403, detail="admin only")
+
+    user_id = payload.user_id
 
     reviewer_id = getattr(request.state, "user_id", None)
 
@@ -613,19 +623,15 @@ async def approve_bind_request(req_id: int, request: Request):
                 detail=f"此 LINE ID 已綁定至「{conflict.display_name}」，請先在人員管理中清除",
             )
 
-        # 找目標使用者
-        matches = db.query(User).filter(
-            User.display_name == req.requested_name, User.is_active == True
-        ).all()
-        if not matches:
-            raise HTTPException(status_code=404, detail=f"找不到使用者「{req.requested_name}」")
-        if len(matches) > 1:
-            raise HTTPException(
-                status_code=409,
-                detail=f"「{req.requested_name}」有多筆同名，請在人員管理中手動填入 LINE ID",
-            )
+        # 查找目標使用者
+        target = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+        if not target:
+            raise HTTPException(status_code=404, detail=f"找不到指定的使用者")
 
-        target = matches[0]
+        # 清除該員工的舊 LINE ID（如果有）
+        if target.line_user_id and target.line_user_id != req.line_user_id:
+            target.line_user_id = None
+
         target.line_user_id = req.line_user_id
         req.status = "approved"
         req.matched_user_id = target.id

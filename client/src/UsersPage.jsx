@@ -248,9 +248,88 @@ function ConfirmModal({ message, onConfirm, onClose }) {
 
 // ── LINE 綁定申請管理 ───────────────────────────────────────────
 
+function ApproveBindingModal({ request, users, onConfirm, onClose }) {
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [approving, setApproving] = useState(false);
+
+  const handleConfirm = async () => {
+    if (!selectedUserId) return;
+    setApproving(true);
+    try {
+      await api.post(`/api/line/bind-requests/${request.id}/approve`, {
+        user_id: parseInt(selectedUserId)
+      });
+      onConfirm();
+    } catch (e) {
+      alert(e.response?.data?.detail || "核准失敗");
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const selectStyle = {
+    padding: "8px 10px",
+    borderRadius: 6,
+    border: "1px solid #30363d",
+    background: "#0d1117",
+    color: "#cdd9e5",
+    fontSize: 13,
+    width: "100%",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2100 }}>
+      <div style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 12, padding: 24, width: 380, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#cdd9e5" }}>
+          核准綁定申請
+        </div>
+        <div style={{ fontSize: 12, color: "#8b949e" }}>
+          申請人：<span style={{ color: "#cdd9e5" }}>{request.requested_name}</span>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: "#8b949e", marginBottom: 4 }}>
+            綁定員工 *
+          </div>
+          <select
+            value={selectedUserId}
+            onChange={(e) => setSelectedUserId(e.target.value)}
+            style={selectStyle}
+            autoFocus
+          >
+            <option value="">請選擇員工</option>
+            {users.map(u => (
+              <option key={u.id} value={u.id}>
+                {u.display_name} ({ROLE_LABELS[u.role] || u.role})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={onClose}
+            style={{ flex: 1, padding: "8px", borderRadius: 6, background: "transparent", color: "#8b949e", border: "1px solid #30363d", cursor: "pointer", fontSize: 13 }}
+          >
+            取消
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!selectedUserId || approving}
+            style={{ flex: 1, padding: "8px", borderRadius: 6, background: "#238636", color: "#fff", border: "none", cursor: selectedUserId && !approving ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 600, opacity: (!selectedUserId || approving) ? 0.6 : 1 }}
+          >
+            {approving ? "核准中..." : "確認"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LineBindRequestsSection({ active, role }) {
   const [requests, setRequests] = useState([]);
+  const [users, setUsers] = useState([]);
   const [processing, setProcessing] = useState(null);
+  const [selectedRequest, setSelectedRequest] = useState(null);
 
   const fetchRequests = useCallback(async () => {
     if (!active || role !== "admin") return;
@@ -260,18 +339,27 @@ function LineBindRequestsSection({ active, role }) {
     } catch (_) {}
   }, [active, role]);
 
-  useEffect(() => { fetchRequests(); }, [fetchRequests]);
-
-  const handleApprove = async (id) => {
-    setProcessing(id);
+  const fetchUsers = useCallback(async () => {
+    if (!active || role !== "admin") return;
     try {
-      await api.post(`/api/line/bind-requests/${id}/approve`);
-      fetchRequests();
-    } catch (e) {
-      alert(e.response?.data?.detail || "核准失敗");
-    } finally {
-      setProcessing(null);
-    }
+      const res = await api.get("/api/auth/users");
+      setUsers(res.data);
+    } catch (_) {}
+  }, [active, role]);
+
+  useEffect(() => {
+    fetchRequests();
+    fetchUsers();
+  }, [fetchRequests, fetchUsers]);
+
+  const handleApprove = (request) => {
+    setSelectedRequest(request);
+  };
+
+  const handleApproveConfirm = () => {
+    setSelectedRequest(null);
+    fetchRequests();
+    fetchUsers();  // 刷新員工列表，顯示最新的 LINE ID
   };
 
   const handleReject = async (id) => {
@@ -323,7 +411,7 @@ function LineBindRequestsSection({ active, role }) {
                   <td style={{ padding: "10px 12px" }}>
                     <div style={{ display: "flex", gap: 6 }}>
                       <button
-                        onClick={() => handleApprove(r.id)}
+                        onClick={() => handleApprove(r)}
                         disabled={processing === r.id}
                         style={{ padding: "3px 12px", borderRadius: 4, background: "#238636", color: "#fff", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, opacity: processing === r.id ? 0.6 : 1 }}
                       >
@@ -343,6 +431,14 @@ function LineBindRequestsSection({ active, role }) {
             </tbody>
           </table>
         </div>
+      )}
+      {selectedRequest && (
+        <ApproveBindingModal
+          request={selectedRequest}
+          users={users}
+          onConfirm={handleApproveConfirm}
+          onClose={() => setSelectedRequest(null)}
+        />
       )}
     </div>
   );

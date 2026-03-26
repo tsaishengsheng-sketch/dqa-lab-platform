@@ -544,17 +544,36 @@ const SOPPage = ({ active = true, externalDevice }) => {
 
       <main className={`control-side${externalDevice ? " embedded" : ""}`}>
         <div className="scroll-wrapper">
-          <ControlPanel
-            selectedDevice={selectedDevice}
-            data={data}
-            emergencyFlash={emergencyFlash}
-            effectiveStatus={effectiveStatus}
-            effectiveIsActive={effectiveIsActive}
-            canStop={canStop}
-            isOffline={isOffline}
-            isEmergency={isEmergency}
-            onAction={handleAction}
-          />
+          {role === "guest" ? (
+            <section
+              className="operation-box"
+              style={{
+                borderLeft: "3px solid #f0a500",
+                background: "#1a1500",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ color: "#f0a500", fontSize: 13, fontWeight: 700, marginBottom: 10 }}>
+                🔒 訪客模式
+              </div>
+              <div style={{ color: "#8b949e", fontSize: 12, lineHeight: 1.6 }}>
+                此模式僅供查看設備狀態和測試歷史，<br />
+                無法進行啟動、暫停或停止等操作。
+              </div>
+            </section>
+          ) : (
+            <ControlPanel
+              selectedDevice={selectedDevice}
+              data={data}
+              emergencyFlash={emergencyFlash}
+              effectiveStatus={effectiveStatus}
+              effectiveIsActive={effectiveIsActive}
+              canStop={canStop}
+              isOffline={isOffline}
+              isEmergency={isEmergency}
+              onAction={handleAction}
+            />
+          )}
 
           {isActive && ds.activeSop && (
             <section
@@ -757,7 +776,7 @@ const SOPPage = ({ active = true, externalDevice }) => {
                 )}
               </section>
 
-              {testData && ds.conditionConfirmed && (
+              {testData && ds.conditionConfirmed && role !== "guest" && (
                 <SafetyChecklist
                   operator={operator}
                   onOperatorChange={(val) => {
