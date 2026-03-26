@@ -340,6 +340,8 @@ const SOPPage = ({ active = true, externalDevice }) => {
   useEffect(() => {
     const curDs = deviceStatesRef.current[selectedDevice];
     if (!curDs?.activeSop || Object.keys(curDs.completedSteps).length > 0) return;
+    // FINISHING 不恢復：正常停止後 active_sop_json 尚未清除會導致誤觸發
+    if (!ACTIVE_STATUSES.includes(allDevices[selectedDevice]?.status)) return;
 
     const phase = simPhase;
     const cycle = simCycle;

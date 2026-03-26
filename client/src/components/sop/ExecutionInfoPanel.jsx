@@ -18,7 +18,11 @@ const ExecutionInfoPanel = ({ sop, startedAt, simCycle, doneCnt }) => {
 
   if (!sop || !startedAt) return null;
 
-  const startedAtDate = new Date(startedAt);
+  const startedAtDate = new Date(
+    typeof startedAt === "string" && !startedAt.includes("Z") && !startedAt.includes("+")
+      ? startedAt + "Z"
+      : startedAt
+  );
 
   const elapsedMin = Math.floor((now - startedAtDate) / 60000);
   const spData = generateSP(sop);

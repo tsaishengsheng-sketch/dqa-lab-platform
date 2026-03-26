@@ -157,7 +157,12 @@ function useCountdown(estimatedEndAt) {
       return;
     }
     const calc = () => {
-      const diff = new Date(estimatedEndAt) - new Date();
+      const endMs = new Date(
+        typeof estimatedEndAt === "string" && !estimatedEndAt.includes("Z") && !estimatedEndAt.includes("+")
+          ? estimatedEndAt + "Z"
+          : estimatedEndAt
+      );
+      const diff = endMs - new Date();
       setRemaining(Math.max(0, Math.floor(diff / 1000)));
     };
     calc();

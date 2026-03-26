@@ -157,7 +157,7 @@ const MonitorSide = ({
             TEMP / HUMI TREND
           </label>
           <div style={{ display: "flex", gap: 10, fontSize: 10 }}>
-            <span style={{ color: "#555e6b" }}>── SP</span>
+            <span style={{ color: "#8b949e" }}>── SP</span>
             <span style={{ color: "#ff7b72" }}>── PV Temp</span>
             <span style={{ color: "#a5d6ff" }}>── PV Humi</span>
           </div>
