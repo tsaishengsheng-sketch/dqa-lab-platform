@@ -81,12 +81,13 @@ function LoginPage({ onLogin }) {
         const data = await res.json();
         setError(data.detail || "Token 無效");
       } else {
+        // 清除帳號登入殘留 token（先清舊會話），避免 useEffect 重新驗證後覆蓋 guest role
+        localStorage.removeItem("user_token");
+        localStorage.removeItem("user_id");
+        // 再設定訪客會話
         localStorage.setItem("demo_password", pwdInput);
         localStorage.setItem("demo_login_at", Date.now().toString());
         localStorage.setItem("user_role", "guest");
-        // 清除帳號登入殘留 token，避免 useEffect 重新驗證後覆蓋 guest role
-        localStorage.removeItem("user_token");
-        localStorage.removeItem("user_id");
         // 訪客每次登入清空 AI 對話，避免看到上一位的記錄
         localStorage.removeItem("dqa_ai_chats_v2");
         onLogin();

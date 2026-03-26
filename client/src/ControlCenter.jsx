@@ -836,7 +836,9 @@ export default function ControlCenter({ role, userId, displayName, onLogout }) {
       try {
         const res = await api.get("/api/devices");
         setDevices(res.data);
-      } catch (_) {}
+      } catch (e) {
+        console.error("設備狀態輪詢失敗:", e);
+      }
     };
     fetchDevices();
     const t = setInterval(fetchDevices, 10000);
@@ -849,7 +851,9 @@ export default function ControlCenter({ role, userId, displayName, onLogout }) {
       try {
         const res = await api.get("/api/fixtures/summary");
         setFixtureSummary(res.data);
-      } catch (_) {}
+      } catch (e) {
+        console.error("治具摘要輪詢失敗:", e);
+      }
     };
     fetchSummary();
     const t = setInterval(fetchSummary, 30000);

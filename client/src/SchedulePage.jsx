@@ -395,6 +395,7 @@ function NewScheduleModal({ standardsTree, onClose, onCreated }) {
       onCreated(res.data);
     } catch (e) {
       setError(e.response?.data?.detail || "申請失敗");
+    } finally {
       setSaving(false);
     }
   }
@@ -518,6 +519,7 @@ function ScheduleDetailModal({ schedule, role, userId, onClose, onUpdated, onDel
       setConfirmedResult(res.data); // 顯示最終分配結果，不立即關閉
     } catch (e) {
       setError(e.response?.data?.detail || "操作失敗");
+    } finally {
       setSaving(false);
     }
   }
@@ -531,6 +533,7 @@ function ScheduleDetailModal({ schedule, role, userId, onClose, onUpdated, onDel
       onClose();
     } catch (e) {
       setError(e.response?.data?.detail || "操作失敗");
+    } finally {
       setSaving(false);
     }
   }
