@@ -816,6 +816,7 @@ function BlockDeviceModal({ onClose, onCreated }) {
       onCreated(res.data);
     } catch (e) {
       setError(e.response?.data?.detail || "操作失敗");
+    } finally {
       setSaving(false);
     }
   }
