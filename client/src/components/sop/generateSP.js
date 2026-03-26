@@ -9,8 +9,15 @@ export function fmtMin(min) {
 export function toElapsedMin(startedAt, fullTime) {
   if (!startedAt || !fullTime) return null;
   try {
-    const start = new Date(startedAt);
-    const point = new Date(fullTime);
+    // Naive UTC 字串補 Z，讓瀏覽器正確解析為 UTC
+    const safeStart = (typeof startedAt === "string" && !startedAt.includes("Z") && !startedAt.includes("+"))
+      ? startedAt + "Z"
+      : startedAt;
+    const safeTime = (typeof fullTime === "string" && !fullTime.includes("Z") && !fullTime.includes("+"))
+      ? fullTime + "Z"
+      : fullTime;
+    const start = new Date(safeStart);
+    const point = new Date(safeTime);
     return Math.round((point - start) / 60000);
   } catch {
     return null;
