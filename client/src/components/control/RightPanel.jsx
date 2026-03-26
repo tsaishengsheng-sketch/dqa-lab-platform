@@ -80,10 +80,16 @@ export default function RightPanel() {
 
   const goPrev = () => {
     if (loading || total <= 1) return;
+    if (input.trim() && !window.confirm("⚠️ 您有未發送的內容，確定要切換對話嗎？")) {
+      return;
+    }
     switchConversation(convIds[(currentIdx - 1 + total) % total]);
   };
   const goNext = () => {
     if (loading || total <= 1) return;
+    if (input.trim() && !window.confirm("⚠️ 您有未發送的內容，確定要切換對話嗎？")) {
+      return;
+    }
     switchConversation(convIds[(currentIdx + 1) % total]);
   };
 
@@ -176,7 +182,7 @@ export default function RightPanel() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: 2,
+            gap: 12,
             overflow: "hidden",
           }}
         >
@@ -462,13 +468,14 @@ function MenuItem({ children, onClick, disabled, danger, active }) {
 
 const navBtnS = (disabled) => ({
   background: "transparent",
-  border: "none",
+  border: `1px solid ${disabled ? "#30363d" : "#30363d"}`,
   color: disabled ? "#30363d" : "#8b949e",
   cursor: disabled ? "default" : "pointer",
-  fontSize: 14,
+  fontSize: 16,
+  fontWeight: 600,
   lineHeight: 1,
-  padding: "0 3px",
-  borderRadius: 3,
+  padding: "6px 10px",
+  borderRadius: 6,
   flexShrink: 0,
 });
 
