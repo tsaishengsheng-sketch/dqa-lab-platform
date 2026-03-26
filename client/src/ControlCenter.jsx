@@ -54,11 +54,11 @@ function TopBar({ devices, fixtureSummary, displayName, role, onLogout }) {
         ? "保管人"
         : role === "engineer"
           ? "工程師"
-          : "訪客";
+          : "🔒 訪客模式";
   const roleColor =
-    role === "admin" ? "#3fb950" : role === "keeper" ? "#58a6ff" : "#8b949e";
+    role === "admin" ? "#3fb950" : role === "keeper" ? "#58a6ff" : role === "engineer" ? "#8b949e" : "#ff9f5c";
   const roleBg =
-    role === "admin" ? "#1f3a1f" : role === "keeper" ? "#1f2f3a" : "#21262d";
+    role === "admin" ? "#1f3a1f" : role === "keeper" ? "#1f2f3a" : role === "engineer" ? "#21262d" : "#2d1f00";
 
   return (
     <div
@@ -866,7 +866,7 @@ export default function ControlCenter({ role, userId, displayName, onLogout }) {
   }, []);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
       <TopBar
         devices={devices}
         fixtureSummary={fixtureSummary}
@@ -890,6 +890,24 @@ export default function ControlCenter({ role, userId, displayName, onLogout }) {
         />
         <RightPanel />
       </div>
+      {role === "guest" && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 20,
+            right: 20,
+            fontSize: 24,
+            fontWeight: 700,
+            color: "rgba(139, 148, 158, 0.25)",
+            pointerEvents: "none",
+            letterSpacing: 2,
+            textShadow: "0 0 4px rgba(0,0,0,0.3)",
+            zIndex: 1,
+          }}
+        >
+          DEMO MODE
+        </div>
+      )}
     </div>
   );
 }
