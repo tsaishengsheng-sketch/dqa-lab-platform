@@ -82,17 +82,24 @@ function LoginPage({ onLogin }) {
         const data = await res.json();
         setError(data.detail || "Token 無效");
       } else {
-        // 完整清除舊會話（帳號登入的所有殘留），避免憑證混淆（Tier 1-2 安全修復）
-        localStorage.removeItem("user_token");
-        localStorage.removeItem("user_id");
-        localStorage.removeItem("user_role");
-        localStorage.removeItem("user_display_name");
-        localStorage.removeItem("dqa_ai_chats_v2");
-        // 設定訪客會話（聲明式清晰設定）
+        // 原子性批量更新 localStorage（Tier 1-4 時序修復）
+        // 先清除所有舊會話相關鍵，再統一設定訪客會話，避免中間狀態被讀取
+        const keysToRemove = [
+          "user_token",
+          "user_id",
+          "user_role",
+          "user_display_name",
+          "dqa_ai_chats_v2",
+        ];
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+
+        // 批量設定訪客會話
         localStorage.setItem("demo_password", pwdInput);
         localStorage.setItem("demo_login_at", Date.now().toString());
         localStorage.setItem("user_role", "guest");
-        onLogin();
+
+        // 延遲至下個事件循環，確保 localStorage 寫入完成
+        Promise.resolve().then(onLogin);
       }
     } catch {
       setBackendOffline(true);
