@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "./api";
+import { useToast } from "./components/Toast";
 
 const STATUS_COLORS = {
   ok: { bg: "#1a2d1a", color: "#3fb950", label: "庫存足夠" },
@@ -80,6 +81,7 @@ function SummaryCards({ summary }) {
 }
 
 function ImportModal({ onClose, onSuccess }) {
+  const { showToast } = useToast();
   const [file, setFile] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -114,8 +116,11 @@ function ImportModal({ onClose, onSuccess }) {
       formData.append("file", file);
       const res = await api.post("/api/fixtures/import", formData);
       setResult(res.data);
+      const { created, updated, skipped } = res.data;
+      showToast(`匯入完成：新增 ${created}、更新 ${updated}、跳過 ${skipped}`, "success");
     } catch (e) {
       setError(e.response?.data?.detail || "匯入失敗");
+      showToast(e.response?.data?.detail || "匯入失敗", "error");
     } finally {
       setLoading(false);
     }
@@ -297,6 +302,7 @@ function ImportModal({ onClose, onSuccess }) {
 }
 
 function LoanModal({ onClose, onSubmit, fixtures }) {
+  const { showToast } = useToast();
   const [fixtureId, setFixtureId] = useState("");
   const [borrowerUserId, setBorrowerUserId] = useState("");
   const [deviceId, setDeviceId] = useState("");
@@ -341,9 +347,11 @@ function LoanModal({ onClose, onSubmit, fixtures }) {
         quantity: parseInt(quantity),
         due_date: dueDate ? new Date(dueDate).toISOString() : null,
       });
+      showToast("治具借出成功", "success");
       onSubmit();
     } catch (e) {
       setError(e.response?.data?.detail || "借出登記失敗");
+      showToast(e.response?.data?.detail || "借出登記失敗", "error");
     } finally {
       setLoading(false);
     }
@@ -630,6 +638,7 @@ function SetKeeperModal({ fixture, onClose, onSubmit }) {
 }
 
 function ReturnModal({ loan, onClose, onSubmit }) {
+  const { showToast } = useToast();
   const [condition, setCondition] = useState("normal");
   const [note, setNote] = useState("");
   const [returnDate, setReturnDate] = useState(
@@ -645,7 +654,10 @@ function ReturnModal({ loan, onClose, onSubmit }) {
         keeper_note: note || null,
         returned_at: returnDate,
       });
+      showToast("治具歸還成功", "success");
       onSubmit();
+    } catch (e) {
+      showToast(e.response?.data?.detail || "歸還登記失敗", "error");
     } finally {
       setLoading(false);
     }
@@ -793,6 +805,7 @@ function ReturnModal({ loan, onClose, onSubmit }) {
 }
 
 function AddEditModal({ fixture, onClose, onSuccess }) {
+  const { showToast } = useToast();
   const isEdit = !!fixture;
   const [form, setForm] = useState({
     interface_type: fixture?.interface_type || "",
@@ -842,13 +855,16 @@ function AddEditModal({ fixture, onClose, onSuccess }) {
       };
       if (isEdit) {
         await api.patch(`/api/fixtures/${fixture.id}`, body);
+        showToast("治具已更新", "success");
       } else {
         await api.post("/api/fixtures/", body);
+        showToast("治具已新增", "success");
       }
       onSuccess();
       onClose();
     } catch (e) {
       setError(e.response?.data?.detail || "操作失敗");
+      showToast(e.response?.data?.detail || "操作失敗", "error");
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import ControlCenter from "./ControlCenter";
+import { ToastProvider } from "./components/Toast";
 import { API_BASE } from "./api";
 import api from "./api";
 
@@ -419,9 +420,11 @@ function App() {
   if (!authed) return <LoginPage onLogin={handleLogin} />;
 
   return (
-    <div style={{ height: "100vh", backgroundColor: "#0d1117", overflow: "hidden" }}>
-      <ControlCenter role={role} userId={userId} displayName={displayName} onLogout={handleLogout} />
-    </div>
+    <ToastProvider>
+      <div style={{ height: "100vh", backgroundColor: "#0d1117", overflow: "hidden" }}>
+        <ControlCenter role={role} userId={userId} displayName={displayName} onLogout={handleLogout} />
+      </div>
+    </ToastProvider>
   );
 }
 

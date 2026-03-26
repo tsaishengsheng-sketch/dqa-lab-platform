@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import api from "./api";
+import { useToast } from "./components/Toast";
 
 // ── 常數 ───────────────────────────────────────────────────────────────────
 
@@ -352,6 +353,7 @@ function ConditionPicker({ standardsTree, selected, onChange }) {
 // ── 申請 Modal ──────────────────────────────────────────────────────────────
 
 function NewScheduleModal({ standardsTree, onClose, onCreated }) {
+  const { showToast } = useToast();
   const [form, setForm] = useState({
     project_number: "",
     sample_name: "",
@@ -392,9 +394,11 @@ function NewScheduleModal({ standardsTree, onClose, onCreated }) {
         conditions: form.conditions,
         note: form.note.trim() || null,
       });
+      showToast("排程申請已送出，待管理者審核", "success");
       onCreated(res.data);
     } catch (e) {
       setError(e.response?.data?.detail || "申請失敗");
+      showToast(e.response?.data?.detail || "申請失敗", "error");
     } finally {
       setSaving(false);
     }
@@ -473,6 +477,7 @@ function NewScheduleModal({ standardsTree, onClose, onCreated }) {
 // ── 排程詳情 / 審核 Modal ───────────────────────────────────────────────────
 
 function ScheduleDetailModal({ schedule, role, userId, onClose, onUpdated, onDeleted }) {
+  const { showToast } = useToast();
   const [status, setStatus] = useState(schedule.status);
   const [deviceId, setDeviceId] = useState(schedule.device_id || "");
   const [note, setNote] = useState(schedule.note || "");
@@ -515,10 +520,12 @@ function ScheduleDetailModal({ schedule, role, userId, onClose, onUpdated, onDel
       const payload = { status: "已確認", note: note || null };
       if (deviceId) payload.device_id = deviceId;
       const res = await api.patch(`/api/schedules/${schedule.id}`, payload);
+      showToast("排程已確認", "success");
       onUpdated(res.data);
       setConfirmedResult(res.data); // 顯示最終分配結果，不立即關閉
     } catch (e) {
       setError(e.response?.data?.detail || "操作失敗");
+      showToast(e.response?.data?.detail || "操作失敗", "error");
     } finally {
       setSaving(false);
     }
@@ -529,10 +536,12 @@ function ScheduleDetailModal({ schedule, role, userId, onClose, onUpdated, onDel
     setSaving(true);
     try {
       const res = await api.patch(`/api/schedules/${schedule.id}`, { status: "已取消", note: note || null });
+      showToast("排程已取消", "success");
       onUpdated(res.data);
       onClose();
     } catch (e) {
       setError(e.response?.data?.detail || "操作失敗");
+      showToast(e.response?.data?.detail || "操作失敗", "error");
     } finally {
       setSaving(false);
     }
