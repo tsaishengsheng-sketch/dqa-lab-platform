@@ -23,7 +23,7 @@ from .auth import router as auth_router
 from .fixtures import router as fixtures_router
 from .fixture_notifications import scan_overdue_loans, notify_monthly_inventory, scan_replacement_reminders
 from .purchase_orders import router as purchase_orders_router
-from .schedules import router as schedules_router, blocked_router as device_blocked_router
+from .schedules import router as schedules_router, blocked_router as device_blocked_router, auto_advance_schedules
 from .notification_failures import router as notif_failures_router
 from .models import SessionLocal, DeviceData, ErrorLog, DeviceState
 from .standards import get_ramp_rate, get_standard
@@ -99,8 +99,9 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(scan_overdue_loans, "cron", hour=8, minute=0)
     scheduler.add_job(notify_monthly_inventory, "cron", day=1, hour=8, minute=0)
     scheduler.add_job(scan_replacement_reminders, "cron", day_of_week="mon", hour=8, minute=0)
+    scheduler.add_job(auto_advance_schedules, "interval", minutes=5)
     scheduler.start()
-    print("✅ APScheduler 已啟動（每日 08:00 掃描逾期治具，每月 1 日月盤點提醒，每週一 08:00 汰換提醒）")
+    print("✅ APScheduler 已啟動（每日 08:00 掃描逾期治具，每月 1 日月盤點提醒，每週一 08:00 汰換提醒，每 5 分鐘推進排程狀態）")
 
     yield
     scheduler.shutdown()

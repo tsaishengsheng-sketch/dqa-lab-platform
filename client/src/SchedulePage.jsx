@@ -1023,6 +1023,60 @@ export default function SchedulePage({ active, role, userId }) {
           />
         )}
 
+        {/* 待審核隊列 */}
+        {(() => {
+          const pending = schedules.filter((s) => s.status === "待審核");
+          if (pending.length === 0) return null;
+          return (
+            <div style={{ border: "1px solid #484f58", borderRadius: 8, overflow: "hidden", background: "#0d1117" }}>
+              <div style={{
+                padding: "6px 12px",
+                background: "#161b22",
+                borderBottom: "1px solid #30363d",
+                display: "flex", alignItems: "center", gap: 8,
+              }}>
+                <span style={{ fontSize: 11, color: "#8b949e", fontWeight: 700, letterSpacing: 1 }}>待審核排程隊列</span>
+                <span style={{
+                  background: "#30363d", color: "#8b949e",
+                  borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 700,
+                }}>{pending.length}</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {pending.map((s, idx) => (
+                  <div
+                    key={s.id}
+                    onClick={() => setSelectedSchedule(s)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 12,
+                      padding: "7px 12px",
+                      borderBottom: idx < pending.length - 1 ? "1px solid #21262d" : "none",
+                      cursor: "pointer",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = "#161b22"}
+                    onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                  >
+                    <span style={{ fontSize: 11, color: "#484f58", fontFamily: "monospace", width: 24, flexShrink: 0 }}>
+                      #{idx + 1}
+                    </span>
+                    <span style={{ fontSize: 12, color: "#cdd9e5", fontFamily: "monospace", minWidth: 90 }}>
+                      {s.project_number}
+                    </span>
+                    <span style={{ fontSize: 12, color: "#cdd9e5", flex: 1 }}>{s.sample_name}</span>
+                    <span style={{ fontSize: 11, color: "#8b949e", minWidth: 60 }}>{s.applicant_name || "—"}</span>
+                    <span style={{ fontSize: 11, color: "#e3b341", minWidth: 60, textAlign: "right" }}>
+                      {fmtHours(s.total_hours)}
+                    </span>
+                    <span style={{ fontSize: 10, color: "#484f58", minWidth: 100, textAlign: "right" }}>
+                      {fmtDt(s.created_at)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* 圖例 */}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           {Object.entries(STATUS_COLOR).map(([s, c]) => (

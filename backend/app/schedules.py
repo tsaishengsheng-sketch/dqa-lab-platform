@@ -316,6 +316,45 @@ def _auto_assign(
     return best_device, best_start, end_time
 
 
+# ── 排程狀態自動推進 ──────────────────────────────────────────────────────────
+
+
+def auto_advance_schedules():
+    """
+    每 5 分鐘執行：
+    - 已確認 + start_time ≤ now → 進行中
+    - 進行中 + end_time   ≤ now → 已完成
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with SessionLocal() as db:
+        # 已確認 → 進行中
+        to_running = (
+            db.query(Schedule)
+            .filter(Schedule.status == "已確認", Schedule.start_time <= now)
+            .all()
+        )
+        for s in to_running:
+            s.status = "進行中"
+            s.updated_at = now
+
+        # 進行中 → 已完成
+        to_done = (
+            db.query(Schedule)
+            .filter(Schedule.status == "進行中", Schedule.end_time <= now)
+            .all()
+        )
+        for s in to_done:
+            s.status = "已完成"
+            s.updated_at = now
+
+        if to_running or to_done:
+            db.commit()
+            print(
+                f"[scheduler] 排程狀態推進："
+                f"{len(to_running)} 筆→進行中，{len(to_done)} 筆→已完成"
+            )
+
+
 # ── Schedules 端點 ─────────────────────────────────────────────────────────
 
 
@@ -502,6 +541,8 @@ async def patch_schedule(schedule_id: int, body: SchedulePatch, request: Request
             s.note = body.note
 
         if body.status == "已確認":
+            if s.status != "待審核":
+                raise HTTPException(status_code=409, detail=f"排程已是「{s.status}」，無法重複確認")
             conditions = json.loads(s.conditions) if s.conditions else []
             cache = getattr(request.app.state, "AICM_CACHE", {})
             running_until = _build_running_until(cache)
