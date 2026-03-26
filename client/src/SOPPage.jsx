@@ -29,6 +29,7 @@ const initDeviceState = () => ({
   selectedStd: null,
   selectedVer: null,
   selectedTest: null,
+  conditionConfirmed: false,
 });
 
 function restoreSelectionFromSopId(sopId, standardTree) {
@@ -655,6 +656,7 @@ const SOPPage = ({ active = true, externalDevice }) => {
                         selectedStd: k,
                         selectedVer: null,
                         selectedTest: null,
+                        conditionConfirmed: false,
                       })
                     }
                   />
@@ -690,6 +692,7 @@ const SOPPage = ({ active = true, externalDevice }) => {
                         updateDS(selectedDevice, {
                           selectedVer: k,
                           selectedTest: null,
+                          conditionConfirmed: false,
                         })
                       }
                     />
@@ -723,15 +726,38 @@ const SOPPage = ({ active = true, externalDevice }) => {
                       ])}
                       selected={selectedTest}
                       onSelect={(k) =>
-                        updateDS(selectedDevice, { selectedTest: k })
+                        updateDS(selectedDevice, { selectedTest: k, conditionConfirmed: false })
                       }
                     />
                   </>
                 )}
-                {testData && <ConditionCard test={testData} />}
+                {testData && (
+                  <>
+                    <ConditionCard test={testData} />
+                    {!ds.conditionConfirmed && (
+                      <button
+                        onClick={() => updateDS(selectedDevice, { conditionConfirmed: true })}
+                        style={{
+                          width: "100%",
+                          marginTop: 12,
+                          padding: "10px",
+                          backgroundColor: "#238636",
+                          color: "#fff",
+                          border: "1px solid #2ea043",
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          fontSize: 14,
+                          fontWeight: 600,
+                        }}
+                      >
+                        ✅ 確認選擇，進入安全確認
+                      </button>
+                    )}
+                  </>
+                )}
               </section>
 
-              {testData && (
+              {testData && ds.conditionConfirmed && (
                 <SafetyChecklist
                   operator={operator}
                   onOperatorChange={(val) => {

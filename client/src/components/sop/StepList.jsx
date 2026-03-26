@@ -1,5 +1,13 @@
 import React, { useMemo } from "react";
 
+const PHASE_LABELS = {
+  dwell_high: "高溫保持階段開始時",
+  ramp_to_low: "降溫段開始時",
+  ramp_to_ambient: "回溫段開始時",
+  dwell_low: "低溫保持階段開始時",
+  ramp_to_high: "升溫段開始時",
+};
+
 const StepList = ({ steps, completedSteps, onToggle, manualMode = false }) => {
   const totalSteps = steps.length;
   const doneCnt = Object.values(completedSteps).filter(Boolean).length;
@@ -59,6 +67,7 @@ const StepList = ({ steps, completedSteps, onToggle, manualMode = false }) => {
                 Step {step.step_id}. {step.name}
                 {isAuto && (
                   <span
+                    title={PHASE_LABELS[step.auto_trigger] || "系統自動確認"}
                     style={{
                       marginLeft: 6,
                       fontSize: 10,
@@ -67,6 +76,7 @@ const StepList = ({ steps, completedSteps, onToggle, manualMode = false }) => {
                       color: checked ? "#57ab5a" : "#58a6ff",
                       borderRadius: 4,
                       border: `1px solid ${checked ? "#2d5a3a" : "#1f6feb"}`,
+                      cursor: "help",
                     }}
                   >
                     ⚡ Auto
