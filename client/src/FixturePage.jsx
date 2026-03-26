@@ -1048,6 +1048,8 @@ export default function FixturePage({ active, role }) {
     } catch (e) {
       const msg = e.response?.data?.detail || "盤點失敗";
       showToast(msg, "error");
+    } finally {
+      setInventoryEdits((prev) => { const n = { ...prev }; delete n[fixtureId]; return n; });
     }
   };
 
@@ -1531,6 +1533,8 @@ export default function FixturePage({ active, role }) {
                                   fetchAll();
                                 } catch (e) {
                                   alert(e.response?.data?.detail || "刪除失敗");
+                                } finally {
+                                  // 確保刪除操作不留下未清理的狀態
                                 }
                               }}
                               style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #f8514944", background: "transparent", color: "#f85149", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}

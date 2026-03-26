@@ -479,7 +479,6 @@ const SOPPage = ({ active = true, externalDevice }) => {
           safetyChecked: [false, false, false, false],
         });
         setStartError("");
-        setPauseOptimistic(null);
         const msg = type === "emergency" ? "緊急停止已執行" : "測試已停止";
         showToast(msg, "success");
       } else if (type === "pause") {
@@ -490,6 +489,7 @@ const SOPPage = ({ active = true, externalDevice }) => {
       console.error("[SOPPage] action:", e);
       const msg = e.response?.data?.detail || "操作失敗";
       showToast(msg, "error");
+    } finally {
       setPauseOptimistic(null);
     }
   };

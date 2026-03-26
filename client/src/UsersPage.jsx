@@ -794,6 +794,7 @@ export default function UsersPage({ active, role }) {
       fetchUsers();
     } catch (e) {
       console.error(e);
+      showToast("激活狀態更新失敗", "error");
     }
   };
 
@@ -805,6 +806,8 @@ export default function UsersPage({ active, role }) {
       fetchUsers();
     } catch (e) {
       alert(e.response?.data?.detail || "刪除失敗");
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
