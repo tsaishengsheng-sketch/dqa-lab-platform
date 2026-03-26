@@ -1,4 +1,5 @@
 import axios from "axios";
+import { translateErrorMessage } from "./errorMessages";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -28,6 +29,10 @@ api.interceptors.response.use(
       localStorage.removeItem("user_display_name");
       localStorage.removeItem("user_id");
       window.location.href = "/";
+    }
+    // 轉譯錯誤訊息為使用者友善版本
+    if (err.response?.data?.detail) {
+      err.response.data.detail = translateErrorMessage(err.response.data.detail);
     }
     return Promise.reject(err);
   },
