@@ -215,6 +215,9 @@ function DeviceCard({ device, isSelected, onClick }) {
         <div style={{ marginTop: 3 }}>
           <div style={{ fontSize: 10, color: "#8b949e" }}>
             {device.temperature != null ? `${device.temperature}°C` : "—"}
+            {device.humidity != null && (
+              <span style={{ marginLeft: 4 }}>{device.humidity}%</span>
+            )}
           </div>
           {device.running_sop_name && device.running_sop_name !== "STANDBY" && (
             <div

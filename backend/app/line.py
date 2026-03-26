@@ -354,7 +354,7 @@ def _start_bind_request(sender_id: str) -> str:
         )
         db.add(req)
         db.commit()
-    return "請輸入您在系統中的姓名（須與名冊完全相符），例如直接回覆「王小明」"
+    return "請輸入您在系統中的姓名（須與名冊完全相符），例如直接回覆「王小明」\n\n若要取消，請傳「取消申請」。"
 
 
 def _submit_bind_name(sender_id: str, name: str) -> str:
@@ -449,6 +449,20 @@ def _dispatch_command(text: str, cache: Dict[str, Any]) -> List[Dict]:
     return [{"type": "text", "text": "❓ 未知指令，點擊下方「總覽」開始查詢。", "quickReply": {"items": _get_quick_reply_items(cache)}}]
 
 
+def _cancel_bind_request(sender_id: str) -> str:
+    """使用者取消尚未審核的申請（pending / awaiting_name 均可取消）"""
+    with SessionLocal() as db:
+        req = db.query(LineBindRequest).filter(
+            LineBindRequest.line_user_id == sender_id,
+            LineBindRequest.status.in_(["pending", "awaiting_name"]),
+        ).first()
+        if not req:
+            return "ℹ️ 您目前沒有待審核的申請。"
+        db.delete(req)
+        db.commit()
+    return "✅ 已取消申請。\n如需重新申請，請點擊下方「申請綁定」。"
+
+
 def _unbound_quick_reply() -> List[Dict]:
     return [{"type": "action", "action": {"type": "message", "label": "申請綁定", "text": "申請綁定"}}]
 
@@ -513,6 +527,16 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
             reply_text = _start_bind_request(sender_id)
             background_tasks.add_task(
                 _send_to_line, reply_token, [{"type": "text", "text": reply_text}], client
+            )
+            continue
+
+        # ── 取消申請（awaiting_name 或 pending 均可取消）──
+        if user_text == "取消申請":
+            reply_text = _cancel_bind_request(sender_id)
+            background_tasks.add_task(
+                _send_to_line, reply_token,
+                [{"type": "text", "text": reply_text, "quickReply": {"items": _unbound_quick_reply()}}],
+                client,
             )
             continue
 

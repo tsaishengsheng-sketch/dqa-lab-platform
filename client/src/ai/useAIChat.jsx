@@ -308,12 +308,12 @@ export default function useAIChat() {
           );
         }
       } finally {
+        // loading / streamText 一律清除，防止意外 abort 時 loading 卡在 true
+        setLoading(false);
+        setStreamText("");
+        streamTextRef.current = "";
+        abortControllerRef.current = null;
         if (!controller.signal.aborted) {
-          setLoading(false);
-          setStreamText("");
-          streamTextRef.current = "";
-          abortControllerRef.current = null;
-          // A5 fix: 統一在 finally 處理 focus
           inputRef.current?.focus();
         }
       }

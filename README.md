@@ -19,9 +19,9 @@
 | 🗄️ **治具借還管理** | 借出 / 歸還 / 逾期追蹤、損壞遺失清單、月盤點、採購閉環、Excel 批次匯入 |
 | 🤖 **AI 法規諮詢** | 自然語言查詢、RAG 法規檢索、多輪對話、右側欄常駐 |
 | 🗓️ **排程系統** | 甘特圖、自動排程（最早可用設備）、審核前即時預覽時段、不可用時段管理；engineer/keeper 可自助取消待審核排程 |
-| 🚨 **LINE Bot 通知** | SOP 五時機推播、治具逾期 / 汰換 / 月盤點提醒、推播失敗記錄（admin 可查） |
+| 🚨 **LINE Bot 通知** | SOP 五時機推播、治具逾期 / 汰換 / 月盤點提醒、推播失敗記錄（admin 可查）；支援「取消申請」解除綁定流程卡死 |
 | 👥 **人員管理** | 工程師名冊、LINE 綁定申請審核流程、訪客 Token 管理 |
-| 🔐 **四層存取控制** | admin / keeper / engineer / guest，bcrypt 密碼雜湊，IP Rate Limiting |
+| 🔐 **四層存取控制** | admin / keeper / engineer / guest，bcrypt 密碼雜湊，IP Rate Limiting；訪客模式角色隔離 |
 
 ---
 

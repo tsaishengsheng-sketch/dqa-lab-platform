@@ -20,9 +20,16 @@ const STATUS_COLOR = {
 
 const STATUS_LIST = ["待審核", "已確認", "進行中", "已完成", "已取消"];
 
+// 後端回傳 naive UTC 字串（無 Z），補上 Z 讓瀏覽器正確解析為 UTC
+function toUtcDate(dt) {
+  if (!dt) return null;
+  if (dt instanceof Date) return dt;
+  return new Date(dt.includes("Z") || dt.includes("+") ? dt : dt + "Z");
+}
+
 function fmtDt(dt) {
   if (!dt) return "—";
-  const d = new Date(dt);
+  const d = toUtcDate(dt);
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
@@ -60,7 +67,7 @@ function GanttChart({ schedules, blockedPeriods, rangeStart, rangeEnd, onClickSc
   }
 
   function toPx(dt) {
-    return ((new Date(dt) - rangeStart) / 3600000) * HOUR_PX;
+    return ((toUtcDate(dt) - rangeStart) / 3600000) * HOUR_PX;
   }
 
   return (
