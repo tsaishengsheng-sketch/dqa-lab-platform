@@ -242,10 +242,17 @@ class DeviceData(Base):
 class DeviceState(Base):
     __tablename__ = "device_states"
 
+    # --- 設備核心狀態 ---
     device_id: Mapped[str] = mapped_column(String, primary_key=True)
     status: Mapped[str] = mapped_column(String, default="IDLE")
     temperature: Mapped[float] = mapped_column(Float, default=25.0)
     humidity: Mapped[float] = mapped_column(Float, default=55.0)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+
+    # --- SOP 執行狀態 ---
     running_sop_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     running_sop_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     standard_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -254,12 +261,10 @@ class DeviceState(Base):
     started_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime, nullable=True
     )
+
+    # --- 模擬器狀態（物理模擬引擎專用，未來可獨立為 SimulatorState 表）---
     sim_phase: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="idle")
     sim_cycle: Mapped[int] = mapped_column(Integer, default=0)
-    updated_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime,
-        default=lambda: datetime.datetime.now(datetime.timezone.utc),
-    )
 
 
 # ---------- 異常紀錄 ----------
