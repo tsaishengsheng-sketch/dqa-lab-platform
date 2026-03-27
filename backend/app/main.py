@@ -29,7 +29,9 @@ from .models import SessionLocal, DeviceData, ErrorLog, DeviceState, SopExecutio
 from .standards import get_ramp_rate, get_standard
 from .utils import _now_utc, _save_device_state
 import httpx as _httpx
+import logging
 
+logger = logging.getLogger("app")
 background_tasks = set()
 
 
@@ -392,7 +394,7 @@ async def emergency_stop(device_id: str, request: Request):
         )
         _save_device_state(device_id, device)
 
-    print(f"🚨 [{device_id}] EMERGENCY STOP by {operator}")
+    logger.warning(f"[{device_id}] EMERGENCY STOP by {operator}")
     asyncio.create_task(
         push_sop_notification(
             operator_user_id,
@@ -723,7 +725,7 @@ async def data_simulator():
                             db.commit()
                         _save_device_state(device_id, item)
                     except Exception as e:
-                        print(f"[{device_id}] DB write error: {e}")
+                        logger.error(f"[{device_id}] DB write error: {e}")
                     write_counters[device_id] = 0
             else:
                 write_counters[device_id] = 0

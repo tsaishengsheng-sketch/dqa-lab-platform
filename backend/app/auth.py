@@ -2,11 +2,14 @@ import os
 import time
 import secrets
 import datetime
+import logging
 from typing import Optional
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from .models import SessionLocal, User, DemoToken
+
+logger = logging.getLogger("auth")
 
 DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "")
 
@@ -539,7 +542,7 @@ async def auth_middleware(request: Request, call_next):
     user_token = request.headers.get("X-User-Token", "")
     demo_token = request.headers.get("X-Demo-Password", "")
     if user_token and demo_token:
-        print(f"⚠️ [SECURITY] 雙 token 衝突（IP: {ip}）：同時送 X-User-Token + X-Demo-Password")
+        logger.warning(f"[SECURITY] 雙 token 衝突（IP: {ip}）：同時送 X-User-Token + X-Demo-Password")
         return JSONResponse(
             status_code=400, content={"detail": "不能同時使用帳號 Token 與訪客 Token"}
         )

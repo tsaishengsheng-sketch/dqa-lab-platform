@@ -20,6 +20,8 @@ logger = logging.getLogger("line_bot")
 router = APIRouter(prefix="/api/line", tags=["line"])
 
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
+LINE_USER_ID = os.getenv("LINE_USER_ID", "")
 
 # LINE API 端點
 REPLY_URL = "https://api.line.me/v2/bot/message/reply"
@@ -53,8 +55,8 @@ def _log_notif_failure(target: str, text: str, error_msg: str):
 
 async def push_message(text: str):
     """主動推播訊息給 env 設定的預設 User ID（供 main.py 緊急通知使用）"""
-    token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
-    user_id = os.getenv("LINE_USER_ID", "")
+    token = LINE_CHANNEL_ACCESS_TOKEN
+    user_id = LINE_USER_ID
 
     if not token or not user_id:
         logger.warning("[LINE] 未設定 TOKEN 或 USER_ID，跳過推播")
@@ -85,7 +87,7 @@ async def push_message(text: str):
 
 async def push_to_user(line_user_id: str, text: str):
     """推播訊息給指定 LINE User ID（供治具通知使用）"""
-    token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
+    token = LINE_CHANNEL_ACCESS_TOKEN
 
     if not token:
         logger.warning("[LINE] 未設定 CHANNEL_ACCESS_TOKEN，跳過推播")
@@ -138,7 +140,7 @@ async def _send_to_line(
     reply_token: str, messages: List[Dict], client: httpx.AsyncClient
 ):
     """異步發送訊息封裝"""
-    token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
+    token = LINE_CHANNEL_ACCESS_TOKEN
     try:
         res = await client.post(
             REPLY_URL,

@@ -269,15 +269,21 @@ async def standards_query(req: QueryRequest):
     payload = _build_gemini_payload(messages, system_content)
     api_key = _get_api_key()
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(
-            f"{GEMINI_URL}:generateContent?key={api_key}",
-            json=payload,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-    reply = data["candidates"][0]["content"]["parts"][0]["text"]
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{GEMINI_URL}:generateContent?key={api_key}",
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        reply = data["candidates"][0]["content"]["parts"][0]["text"]
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=503, detail="AI 服務逾時，請稍後再試")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=503, detail=f"AI 服務錯誤：{e.response.status_code}")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"AI 服務不可用：{e}")
     return QueryResponse(reply=reply)
 
 
@@ -298,28 +304,33 @@ async def standards_query_stream(req: QueryRequest):
     api_key = _get_api_key()
 
     async def generate():
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            async with client.stream(
-                "POST",
-                f"{GEMINI_URL}:streamGenerateContent?alt=sse&key={api_key}",
-                json=payload,
-            ) as resp:
-                async for line in resp.aiter_lines():
-                    if line.startswith("data: "):
-                        raw = line[6:].strip()
-                        if raw == "[DONE]":
-                            break
-                        try:
-                            data = json.loads(raw)
-                            token = (
-                                data.get("candidates", [{}])[0]
-                                .get("content", {})
-                                .get("parts", [{}])[0]
-                                .get("text", "")
-                            )
-                            if token:
-                                yield token
-                        except Exception:
-                            pass
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"{GEMINI_URL}:streamGenerateContent?alt=sse&key={api_key}",
+                    json=payload,
+                ) as resp:
+                    async for line in resp.aiter_lines():
+                        if line.startswith("data: "):
+                            raw = line[6:].strip()
+                            if raw == "[DONE]":
+                                break
+                            try:
+                                data = json.loads(raw)
+                                token = (
+                                    data.get("candidates", [{}])[0]
+                                    .get("content", {})
+                                    .get("parts", [{}])[0]
+                                    .get("text", "")
+                                )
+                                if token:
+                                    yield token
+                            except Exception:
+                                pass
+        except httpx.TimeoutException:
+            yield "\n\n[AI 服務逾時，請稍後再試]"
+        except Exception as e:
+            yield f"\n\n[AI 服務不可用：{e}]"
 
     return StreamingResponse(generate(), media_type="text/plain")
