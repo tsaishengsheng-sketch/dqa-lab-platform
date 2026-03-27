@@ -8,6 +8,14 @@ def _now_utc() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def today_utc_window() -> tuple:
+    """回傳 (now, today_start, today_end) — 三者皆為 UTC-aware datetime"""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+    return now, today_start, today_end
+
+
 def _save_device_state(device_id: str, item: dict):
     with SessionLocal() as db:
         state = db.get(DeviceState, device_id)

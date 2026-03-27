@@ -3,6 +3,7 @@ import datetime
 import logging
 from .models import SessionLocal, FixtureLoan, Fixture, User
 from .line import push_to_user
+from .utils import today_utc_window
 
 logger = logging.getLogger("fixture_notifications")
 
@@ -73,9 +74,7 @@ async def scan_overdue_loans():
     logger.info("[Notify] 開始每日掃描...")
     try:
         with SessionLocal() as db:
-            now = datetime.datetime.now(datetime.timezone.utc)
-            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+            now, today_start, today_end = today_utc_window()
             two_days_later_end = (today_start + datetime.timedelta(days=2)).replace(
                 hour=23, minute=59, second=59
             )

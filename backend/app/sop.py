@@ -23,6 +23,26 @@ execution_router = APIRouter(prefix="/api/sop-executions", tags=["sop-executions
 # 定義設備 ID 清單（目前支援的五個設備）
 DEVICE_IDS = ["CH-01", "CH-02", "CH-03", "CH-04", "CH-05"]
 
+import logging
+logger = logging.getLogger("sop")
+
+
+def _validate_start_sop_input(payload: dict, cache: dict) -> tuple:
+    """sop_id / device_id / 設備存在性驗證，回傳 (sop_id, device_id, device)"""
+    sop_id: str = payload.get("sop_id", "")
+    device_id: str = payload.get("device_id", "CH-01")
+
+    if not sop_id:
+        raise HTTPException(status_code=400, detail="sop_id 不能為空")
+    if device_id not in DEVICE_IDS:
+        raise HTTPException(status_code=400, detail=f"無效的 device_id: {device_id}")
+
+    device = cache.get(device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail=f"設備 {device_id} 不存在")
+
+    return sop_id, device_id, device
+
 
 # 標準樹與 SOP 列表路由
 @router.get("/standards/tree")
@@ -75,10 +95,11 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
     if role not in ("engineer", "keeper", "admin"):
         raise HTTPException(status_code=403, detail="無操作權限")
 
-    sop_id: str = payload.get("sop_id", "")
-    device_id: str = payload.get("device_id", "CH-01")
     operator: str = payload.get("operator", "")
     operator_user_id: Optional[int] = getattr(request.state, "user_id", None)
+
+    cache = request.app.state.AICM_CACHE
+    sop_id, device_id, device = _validate_start_sop_input(payload, cache)
 
     # 若前端未填 operator，從登入帳號自動帶入顯示名稱
     if not operator and operator_user_id:
@@ -89,17 +110,6 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
                     operator = u.display_name or ""
         except Exception:
             pass
-
-    if not sop_id:
-        raise HTTPException(status_code=400, detail="sop_id 不能為空")
-    if device_id not in DEVICE_IDS:
-        raise HTTPException(status_code=400, detail=f"無效的 device_id: {device_id}")
-
-    cache = request.app.state.AICM_CACHE
-    device = cache.get(device_id)
-
-    if not device:
-        raise HTTPException(status_code=404, detail=f"設備 {device_id} 不存在")
 
     std_data = STANDARDS_AND_SOPS.get(sop_id, {})
     sop_name = std_data.get("name", sop_id)
@@ -137,9 +147,7 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
         )
         _save_device_state(device_id, device)
 
-    print(
-        f"🔥 [{device_id}] Started SOP: {sop_id} ({sop_name}) by {operator or '未填寫'}"
-    )
+    logger.info(f"[{device_id}] Started SOP: {sop_id} ({sop_name}) by {operator or '未填寫'}")
 
     # Phase 9-4：啟動通知
     op_display = operator.strip() if operator else "未填寫"

@@ -5,6 +5,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, UploadFile, File, Request
 from pydantic import BaseModel
 from .models import SessionLocal, Fixture, FixtureLoan, PurchaseOrder, User
+from .utils import today_utc_window
 
 router = APIRouter(prefix="/api/fixtures", tags=["fixtures"])
 
@@ -218,8 +219,7 @@ def list_fixtures(
 def get_summary():
     db = SessionLocal()
     try:
-        now = datetime.datetime.now(datetime.timezone.utc)
-        today_end = now.replace(hour=23, minute=59, second=59)
+        now, today_start, today_end = today_utc_window()
 
         from sqlalchemy import func as _func
         total_loaned = (
@@ -233,7 +233,7 @@ def get_summary():
             .filter(
                 FixtureLoan.status == "loaned",
                 FixtureLoan.due_date <= today_end,
-                FixtureLoan.due_date >= now.replace(hour=0, minute=0, second=0),
+                FixtureLoan.due_date >= today_start,
             )
             .count()
         )
