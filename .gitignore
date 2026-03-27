@@ -107,4 +107,5 @@ dmypy.json
 *.mov
 
 #changlog
-git_log.txt.claude/
+git_log.txt
+.claude/
