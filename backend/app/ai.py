@@ -11,6 +11,8 @@ from .rag import (
     extract_temperatures,
     retrieve_multi,
     retrieve_by_std,
+    filter_chunks_by_hints,
+    retrieve_filtered,
 )
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
@@ -137,33 +139,6 @@ class QueryResponse(BaseModel):
     reply: str
 
 
-def _filter_chunks_by_hints(chunks: list[dict], hints: dict) -> list[dict]:
-    results = []
-    for c in chunks:
-        raw = c.get("raw", {})
-        if hints.get("power_on") is not None:
-            if raw.get("power_on") != hints["power_on"]:
-                continue
-        if hints.get("has_low") and raw.get("low_temperature") is None:
-            continue
-        if (
-            hints.get("has_high")
-            and raw.get("high_temperature") is None
-            and raw.get("target_temperature") is None
-        ):
-            continue
-        if hints.get("no_humidity") and raw.get("humidity_rh_percent") is not None:
-            continue
-        if hints.get("has_humidity") and raw.get("humidity_rh_percent") is None:
-            continue
-        if hints.get("has_cycles") and (
-            raw.get("cycles") is None or raw.get("cycles", 1) <= 1
-        ):
-            continue
-        results.append(c)
-    return results
-
-
 def _extract_test_type_hints(msg: str) -> dict:
     merged = {}
     for keyword, hints in _TEST_TYPE_HINTS.items():
@@ -209,14 +184,14 @@ async def _build_context(msg: str, history: list = []) -> str:
     elif matched_stds:
         raw_hits = retrieve_by_std(matched_stds)
         if type_hints:
-            filtered = _filter_chunks_by_hints(raw_hits, type_hints)
+            filtered = filter_chunks_by_hints(raw_hits, type_hints)
             _add_hits(filtered if len(filtered) >= 2 else raw_hits)
         else:
             _add_hits(raw_hits)
 
     elif type_hints:
         raw_hits = await retrieve(msg, top_k=30)
-        filtered = _filter_chunks_by_hints(raw_hits, type_hints)
+        filtered = filter_chunks_by_hints(raw_hits, type_hints)
         _add_hits(filtered if len(filtered) >= 2 else raw_hits[:20])
 
     elif temps:

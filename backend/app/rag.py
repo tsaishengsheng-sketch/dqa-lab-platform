@@ -252,3 +252,40 @@ async def retrieve_multi(queries: list[str], top_k_each: int = 3) -> list[dict]:
                 seen_keys.add(uid)
                 results.append(h)
     return results
+
+
+def filter_chunks_by_hints(chunks: list[dict], hints: dict) -> list[dict]:
+    """依測試類型提示（hints）篩選 chunk 清單。"""
+    results = []
+    for c in chunks:
+        raw = c.get("raw", {})
+        if hints.get("power_on") is not None:
+            if raw.get("power_on") != hints["power_on"]:
+                continue
+        if hints.get("has_low") and raw.get("low_temperature") is None:
+            continue
+        if (
+            hints.get("has_high")
+            and raw.get("high_temperature") is None
+            and raw.get("target_temperature") is None
+        ):
+            continue
+        if hints.get("no_humidity") and raw.get("humidity_rh_percent") is not None:
+            continue
+        if hints.get("has_humidity") and raw.get("humidity_rh_percent") is None:
+            continue
+        if hints.get("has_cycles") and (
+            raw.get("cycles") is None or raw.get("cycles", 1) <= 1
+        ):
+            continue
+        results.append(c)
+    return results
+
+
+async def retrieve_filtered(
+    query: str, hints: dict, top_k: int = 30, min_results: int = 2
+) -> list[dict]:
+    """向量搜尋後依 hints 篩選；若結果不足 min_results 則回退至未篩選結果。"""
+    raw_hits = await retrieve(query, top_k=top_k)
+    filtered = filter_chunks_by_hints(raw_hits, hints)
+    return filtered if len(filtered) >= min_results else raw_hits
