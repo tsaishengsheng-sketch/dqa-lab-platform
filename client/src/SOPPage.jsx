@@ -10,6 +10,7 @@ import ExecutionPanel from "./components/sop/ExecutionPanel";
 import SafetyChecklist from "./components/sop/SafetyChecklist";
 import "./SOPPage.css";
 import { DEVICE_IDS } from "./constants";
+import ConfirmModal from "./components/ConfirmModal";
 const ACTIVE_STATUSES = ["RUNNING", "PAUSED"];
 
 const initDeviceState = () => ({
@@ -43,74 +44,6 @@ function restoreSelectionFromSopId(sopId, standardTree) {
   return null;
 }
 
-// 自製確認 Modal（取代 window.confirm）
-const ConfirmModal = ({ message, onConfirm, onCancel }) => (
-  <div
-    style={{
-      position: "fixed",
-      inset: 0,
-      zIndex: 1000,
-      background: "rgba(0,0,0,0.6)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-    }}
-  >
-    <div
-      style={{
-        background: "#161b22",
-        border: "1px solid #30363d",
-        borderRadius: 10,
-        padding: "24px 28px",
-        maxWidth: 360,
-        width: "90%",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 13,
-          color: "#cdd9e5",
-          marginBottom: 20,
-          lineHeight: 1.6,
-        }}
-      >
-        {message}
-      </div>
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-        <button
-          onClick={onCancel}
-          style={{
-            padding: "8px 16px",
-            background: "#21262d",
-            color: "#8b949e",
-            border: "1px solid #30363d",
-            borderRadius: 6,
-            cursor: "pointer",
-            fontSize: 12,
-          }}
-        >
-          取消
-        </button>
-        <button
-          onClick={onConfirm}
-          style={{
-            padding: "8px 16px",
-            background: "#da3633",
-            color: "#fff",
-            border: "none",
-            borderRadius: 6,
-            cursor: "pointer",
-            fontSize: 12,
-            fontWeight: 700,
-          }}
-        >
-          確定
-        </button>
-      </div>
-    </div>
-  </div>
-);
 
 const SOPPage = ({ active = true, externalDevice }) => {
   const { showToast } = useToast();
@@ -605,15 +538,20 @@ const SOPPage = ({ active = true, externalDevice }) => {
                       {manualMode ? "🔓 手動中" : "🔒 自動"}
                     </button>
                     <button
-                      onClick={async () => {
-                        if (!window.confirm("確定跳至降溫階段？此操作將略過剩餘測試步驟，直接回溫到 25°C。")) return;
-                        try {
-                          await api.post(`/api/devices/${selectedDevice}/set-phase`, { phase: "ramp_to_ambient" });
-                          showToast("已跳轉至降溫階段", "success");
-                        } catch (e) {
-                          const msg = e?.response?.data?.detail || "操作失敗";
-                          showToast(msg, "error");
-                        }
+                      onClick={() => {
+                        setConfirmModal({
+                          message: "確定跳至降溫階段？此操作將略過剩餘測試步驟，直接回溫到 25°C。",
+                          onConfirm: async () => {
+                            setConfirmModal(null);
+                            try {
+                              await api.post(`/api/devices/${selectedDevice}/set-phase`, { phase: "ramp_to_ambient" });
+                              showToast("已跳轉至降溫階段", "success");
+                            } catch (e) {
+                              const msg = e?.response?.data?.detail || "操作失敗";
+                              showToast(msg, "error");
+                            }
+                          },
+                        });
                       }}
                       title="跳至降溫（略過剩餘測試直接回 25°C）"
                       style={{
