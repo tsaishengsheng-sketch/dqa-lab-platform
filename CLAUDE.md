@@ -56,6 +56,7 @@ alembic upgrade head
 | 物理模擬引擎 | sim_phase 狀態機、多 cycle、重啟自動恢復 |
 | 環境測試標準 | 5 法規 78 條件，三層 STANDARD_TREE |
 | SOP 執行 | 自動確認步驟、自動存報告、LINE 五時機推播 |
+| ISO 17025 報告 | PDF 報告生成（含 GUM 量測不確定度 Type A/B/uc/U）、CSV 報告 |
 | 治具管理 | 借出/歸還/逾期/盤點/採購/汰換，Excel upsert |
 | 排程系統 | 甘特圖、自動排程、即時預覽、不可用時段、自動推進 |
 | AI 諮詢 | Gemini 2.5 Flash-Lite、RAG 檢索、多輪對話 |
