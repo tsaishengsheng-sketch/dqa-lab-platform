@@ -262,9 +262,51 @@ function TabBadge({ count, bg, color = "#0d1117" }) {
   );
 }
 
+// ── DeviceAvailRow ────────────────────────────────────────────────────────────
+
+function DeviceAvailRow({ device }) {
+  const cfg = STATUS_CONFIG[device.status] || STATUS_CONFIG.OFFLINE;
+  const remaining = useCountdown(device.estimated_end_at);
+  return (
+    <div style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid #21262d" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#cdd9e5" }}>{device.device_id}</span>
+        <span style={{ fontSize: 9, fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
+      </div>
+      {remaining !== null && (
+        <div style={{ fontSize: 9, color: "#58a6ff", marginTop: 2 }}>剩 {fmtRemaining(remaining)}</div>
+      )}
+    </div>
+  );
+}
+
+// ── FixtureSummaryPanel ───────────────────────────────────────────────────────
+
+function FixtureSummaryPanel({ fixtureSummary }) {
+  const items = [
+    { label: "借出中", value: fixtureSummary.total_loaned ?? "—", color: "#f0a500" },
+    { label: "今日到期", value: fixtureSummary.due_today ?? "—", color: (fixtureSummary.due_today ?? 0) > 0 ? "#f0a500" : "#8b949e" },
+    { label: "逾期未還", value: fixtureSummary.overdue ?? "—", color: (fixtureSummary.overdue ?? 0) > 0 ? "#f85149" : "#8b949e" },
+  ];
+  return (
+    <div style={{ padding: "8px", display: "flex", flexDirection: "column", gap: 6 }}>
+      {items.map(({ label, value, color }) => (
+        <div key={label} style={{ padding: "6px 8px", borderRadius: 5, background: "#161b22", border: "1px solid #30363d" }}>
+          <div style={{ fontSize: 9, color: "#484f58", marginBottom: 2 }}>{label}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── LeftPanel ─────────────────────────────────────────────────────────────────
 
-function LeftPanel({ devices, selectedDevice, onSelectDevice }) {
+function LeftPanel({ devices, selectedDevice, onSelectDevice, activeTab, fixtureSummary }) {
+  const title = activeTab === "schedule" ? "設備可用性"
+    : activeTab === "fixture" ? "治具概況"
+    : "設備狀態";
+
   return (
     <div
       style={{
@@ -286,27 +328,33 @@ function LeftPanel({ devices, selectedDevice, onSelectDevice }) {
           flexShrink: 0,
         }}
       >
-        設備狀態
+        {title}
       </div>
 
       <div
         style={{
           flex: 1,
-          padding: "0 8px",
+          padding: activeTab === "fixture" ? 0 : "0 8px",
           display: "flex",
           flexDirection: "column",
-          gap: 4,
+          gap: activeTab === "fixture" ? 0 : 4,
           overflowY: "auto",
         }}
       >
-        {devices.map((d) => (
-          <DeviceCard
-            key={d.device_id}
-            device={d}
-            isSelected={d.device_id === selectedDevice}
-            onClick={() => onSelectDevice(d.device_id)}
-          />
-        ))}
+        {activeTab === "fixture" ? (
+          <FixtureSummaryPanel fixtureSummary={fixtureSummary} />
+        ) : activeTab === "schedule" ? (
+          devices.map((d) => <DeviceAvailRow key={d.device_id} device={d} />)
+        ) : (
+          devices.map((d) => (
+            <DeviceCard
+              key={d.device_id}
+              device={d}
+              isSelected={d.device_id === selectedDevice}
+              onClick={() => onSelectDevice(d.device_id)}
+            />
+          ))
+        )}
       </div>
     </div>
   );
@@ -794,6 +842,7 @@ export default function ControlCenter({ role, userId, displayName, onLogout }) {
   );
   const [fixtureSummary, setFixtureSummary] = useState({});
   const [selectedDevice, setSelectedDevice] = useState("CH-01");
+  const [aiOpen, setAiOpen] = useState(false);
 
   // 輪詢設備狀態（3s）
   useEffect(() => {
@@ -839,6 +888,8 @@ export default function ControlCenter({ role, userId, displayName, onLogout }) {
           devices={devices}
           selectedDevice={selectedDevice}
           onSelectDevice={setSelectedDevice}
+          activeTab={activeTab}
+          fixtureSummary={fixtureSummary}
         />
         <CenterPanel
           role={role}
@@ -847,14 +898,69 @@ export default function ControlCenter({ role, userId, displayName, onLogout }) {
           setActiveTab={setActiveTab}
           selectedDevice={selectedDevice}
         />
-        <RightPanel />
       </div>
+
+      {/* AI FAB */}
+      <button
+        onClick={() => setAiOpen((v) => !v)}
+        title="AI 諮詢"
+        style={{
+          position: "fixed",
+          bottom: 24,
+          right: 24,
+          zIndex: 200,
+          width: 46,
+          height: 46,
+          borderRadius: "50%",
+          background: aiOpen ? "#1158c7" : "#1f6feb",
+          border: "none",
+          cursor: "pointer",
+          fontSize: 20,
+          boxShadow: "0 4px 14px rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          transition: "background .15s",
+        }}
+      >
+        🤖
+      </button>
+
+      {/* 點背景關閉 */}
+      {aiOpen && (
+        <div
+          onClick={() => setAiOpen(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 198 }}
+        />
+      )}
+
+      {/* AI 滑入面板 */}
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          height: "100%",
+          width: 500,
+          zIndex: 199,
+          transform: aiOpen ? "translateX(0)" : "translateX(100%)",
+          transition: "transform .2s ease",
+          background: "#0d1117",
+          borderLeft: "1px solid #30363d",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        <RightPanel onClose={() => setAiOpen(false)} />
+      </div>
+
       {role === "guest" && (
         <div
           style={{
             position: "fixed",
             bottom: 20,
-            right: 20,
+            right: 80,
             fontSize: 24,
             fontWeight: 700,
             color: "rgba(139, 148, 158, 0.25)",

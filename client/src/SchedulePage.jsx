@@ -870,19 +870,7 @@ function BlockDeviceModal({ onClose, onCreated }) {
   );
 }
 
-// ── 摘要卡 ──────────────────────────────────────────────────────────────────
-
-function SummaryCard({ label, value, color }) {
-  return (
-    <div style={{
-      background: "#161b22", border: "1px solid #30363d", borderRadius: 8,
-      padding: "12px 16px", flex: 1, minWidth: 100,
-    }}>
-      <div style={{ fontSize: 22, fontWeight: 700, color: color || "#cdd9e5" }}>{value}</div>
-      <div style={{ fontSize: 12, color: "#8b949e", marginTop: 2 }}>{label}</div>
-    </div>
-  );
-}
+// SummaryCard 已移除，改用 header 內嵌 badge
 
 // ── 小工具元件 ──────────────────────────────────────────────────────────────
 
@@ -1011,88 +999,63 @@ export default function SchedulePage({ active, role, userId }) {
 
   if (!active) return null;
 
+  const SUMMARY_BADGES = [
+    { label: "待審核", value: summary["待審核"], color: "#8b949e", bg: "#21262d", border: "#30363d" },
+    { label: "已確認", value: summary["已確認"], color: "#79c0ff", bg: "#1c3a5e", border: "#388bfd" },
+    { label: "進行中", value: summary["進行中"], color: "#7ee787", bg: "#1a3828", border: "#3fb950" },
+    { label: "已完成", value: summary["已完成"], color: "#57ab5a", bg: "#0d2318", border: "#238636" },
+  ];
+
   return (
     <div style={{
       height: "100%", display: "flex", flexDirection: "column",
       background: "#0d1117", overflow: "hidden",
     }}>
-      {/* 頁頭 */}
+      {/* 單行緊湊 header */}
       <div style={{
-        padding: "12px 16px", borderBottom: "1px solid #30363d",
-        display: "flex", flexDirection: "column", gap: 10,
-        flexShrink: 0,
+        padding: "6px 14px", borderBottom: "1px solid #30363d",
+        display: "flex", alignItems: "center", gap: 6,
+        flexShrink: 0, flexWrap: "wrap",
       }}>
-        <div style={{ display: "flex", gap: 8 }}>
-          <SummaryCard label="待審核" value={summary["待審核"]} color="#8b949e" />
-          <SummaryCard label="已確認" value={summary["已確認"]} color="#388bfd" />
-          <SummaryCard label="進行中" value={summary["進行中"]} color="#3fb950" />
-          <SummaryCard label="已完成" value={summary["已完成"]} color="#238636" />
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {lastRefreshed && (
-            <span style={{ fontSize: 11, color: "#484f58", whiteSpace: "nowrap" }}>
-              更新於 {lastRefreshed.getHours().toString().padStart(2,"0")}:{lastRefreshed.getMinutes().toString().padStart(2,"0")}:{lastRefreshed.getSeconds().toString().padStart(2,"0")}
-            </span>
-          )}
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            title="重新載入排程資料"
-            style={{ ...cancelBtn, fontSize: 12 }}
-          >
-            {refreshing ? "刷新中..." : "↻ 刷新"}
+        {SUMMARY_BADGES.map(({ label, value, color, bg, border }) => (
+          <span key={label} style={{
+            fontSize: 12, background: bg, border: `1px solid ${border}`,
+            borderRadius: 6, padding: "3px 10px", whiteSpace: "nowrap",
+            color: "#8b949e",
+          }}>
+            {label} <span style={{ fontWeight: 700, color }}>{value}</span>
+          </span>
+        ))}
+        <div style={{ flex: 1 }} />
+        {lastRefreshed && (
+          <span style={{ fontSize: 11, color: "#484f58", whiteSpace: "nowrap" }}>
+            {lastRefreshed.getHours().toString().padStart(2,"0")}:{lastRefreshed.getMinutes().toString().padStart(2,"0")}:{lastRefreshed.getSeconds().toString().padStart(2,"0")}
+          </span>
+        )}
+        <button onClick={handleRefresh} disabled={refreshing} style={{ ...cancelBtn, fontSize: 12 }}>
+          {refreshing ? "刷新中..." : "↻ 刷新"}
+        </button>
+        {isAdmin && (
+          <button onClick={() => setShowBlockModal(true)} style={{ ...cancelBtn, fontSize: 12 }}>
+            標記不可用時段
           </button>
-          {isAdmin && (
-            <button
-              onClick={() => setShowBlockModal(true)}
-              style={{ ...cancelBtn, fontSize: 12 }}
-            >
-              標記不可用時段
-            </button>
-          )}
-          {canOperate && (
-            <button
-              onClick={() => setShowNewModal(true)}
-              style={primaryBtn}
-            >
-              + 申請排程
-            </button>
-          )}
-        </div>
+        )}
+        {canOperate && (
+          <button onClick={() => setShowNewModal(true)} style={primaryBtn}>
+            + 申請排程
+          </button>
+        )}
       </div>
 
-      {/* 主內容（可捲動） */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
-
-        {/* 待審核警示條 */}
-        {summary["待審核"] > 0 && (
-          <div
-            style={{
-              background: "#3a2a1a",
-              border: "1px solid #f0a50044",
-              borderRadius: 6,
-              padding: "10px 14px",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              cursor: "pointer",
-            }}
-            onClick={() => {
-              const pending = document.querySelector('[style*="待審核排程隊列"]');
-              pending?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            }}
-          >
-            <span style={{ fontSize: 14, color: "#f0a500", fontWeight: 700 }}>⚠️</span>
-            <span style={{ color: "#f0a500", fontSize: 13, fontWeight: 600 }}>
-              有 {summary["待審核"]} 筆排程申請待審核
-            </span>
-            <span style={{ fontSize: 11, color: "#8b949e" }}>— 點擊滾動至隊列</span>
-          </div>
-        )}
-
-        {/* 甘特圖 */}
+      {/* 甘特圖（固定區塊，永遠可見） */}
+      <div style={{ flexShrink: 0, padding: "10px 16px", borderBottom: "1px solid #30363d" }}>
         {loading ? (
-          <div style={{ textAlign: "center", color: "#484f58", padding: 40, fontSize: 13 }}>
+          <div style={{
+            height: HEADER_H + DEVICE_IDS.length * ROW_H,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#484f58", fontSize: 13, border: "1px solid #30363d",
+            borderRadius: 8,
+          }}>
             載入中...
           </div>
         ) : (
@@ -1103,6 +1066,24 @@ export default function SchedulePage({ active, role, userId }) {
             rangeEnd={rangeEnd}
             onClickSchedule={setSelectedSchedule}
           />
+        )}
+      </div>
+
+      {/* 捲動區：警示條 + 隊列 + 圖例 + 表格 */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+
+        {/* 待審核警示條 */}
+        {summary["待審核"] > 0 && (
+          <div style={{
+            background: "#3a2a1a", border: "1px solid #f0a50044",
+            borderRadius: 6, padding: "8px 14px",
+            display: "flex", alignItems: "center", gap: 8,
+          }}>
+            <span style={{ fontSize: 13, color: "#f0a500", fontWeight: 700 }}>⚠️</span>
+            <span style={{ color: "#f0a500", fontSize: 13, fontWeight: 600 }}>
+              有 {summary["待審核"]} 筆排程申請待審核
+            </span>
+          </div>
         )}
 
         {/* 待審核隊列 */}

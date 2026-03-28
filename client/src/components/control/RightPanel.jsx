@@ -27,7 +27,7 @@ function pickRandom(n, pool, exclude = []) {
   return shuffled.slice(0, n);
 }
 
-export default function RightPanel() {
+export default function RightPanel({ onClose }) {
   const {
     activeId,
     conversations,
@@ -368,6 +368,16 @@ export default function RightPanel() {
             </div>
           )}
         </div>
+
+        {onClose && (
+          <button
+            onClick={onClose}
+            title="關閉"
+            style={iconBtnS(false)}
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* 快速問題 */}
