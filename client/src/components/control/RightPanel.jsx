@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import useAIChat from "../../ai/useAIChat";
 import ChatArea from "../../ai/ChatArea";
+import { exportChat } from "../../ai/aiStorage";
 
 const QUESTION_POOL = [
   { label: "查庫存", text: "目前治具庫存不足的有哪些？" },
@@ -64,7 +65,6 @@ export default function RightPanel({ onClose }) {
   const menuRef = useRef(null);
   const renameRef = useRef(null);
 
-  // 依最後更新時間排序對話
   const convIds = Object.keys(conversations).sort(
     (a, b) =>
       new Date(conversations[b]?.updatedAt || 0) -
@@ -74,26 +74,19 @@ export default function RightPanel({ onClose }) {
   const currentIdx = convIds.indexOf(activeId);
   const activeConv = conversations[activeId];
   const activeTitle = activeConv?.title || "新對話";
-  const truncTitle =
-    activeTitle.length > 10 ? activeTitle.slice(0, 10) + "…" : activeTitle;
   const currentGroup = activeConv?.projectGroup || "未分組";
 
   const goPrev = () => {
     if (loading || total <= 1) return;
-    if (input.trim() && !window.confirm("⚠️ 您有未發送的內容，確定要切換對話嗎？")) {
-      return;
-    }
+    if (input.trim() && !window.confirm("⚠️ 您有未發送的內容，確定要切換對話嗎？")) return;
     switchConversation(convIds[(currentIdx - 1 + total) % total]);
   };
   const goNext = () => {
     if (loading || total <= 1) return;
-    if (input.trim() && !window.confirm("⚠️ 您有未發送的內容，確定要切換對話嗎？")) {
-      return;
-    }
+    if (input.trim() && !window.confirm("⚠️ 您有未發送的內容，確定要切換對話嗎？")) return;
     switchConversation(convIds[(currentIdx + 1) % total]);
   };
 
-  // 點外部關閉選單
   useEffect(() => {
     if (!menuOpen) return;
     const handler = (e) => {
@@ -104,7 +97,6 @@ export default function RightPanel({ onClose }) {
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
-  // 開始重新命名
   const startRename = () => {
     setRenameValue(activeTitle === "新對話" ? "" : activeTitle);
     setRenaming(true);
@@ -142,8 +134,8 @@ export default function RightPanel({ onClose }) {
   return (
     <div
       style={{
-        width: 500,
-        flexShrink: 0,
+        flex: 1,
+        minHeight: 0,
         borderLeft: "1px solid #30363d",
         display: "flex",
         flexDirection: "column",
@@ -153,49 +145,29 @@ export default function RightPanel({ onClose }) {
       {/* Header */}
       <div
         style={{
-          padding: "5px 8px",
+          padding: "6px 10px",
           borderBottom: "1px solid #21262d",
           flexShrink: 0,
           display: "flex",
           alignItems: "center",
-          gap: 4,
-          minHeight: 30,
+          gap: 5,
+          minHeight: 36,
           position: "relative",
         }}
       >
-        <span
-          style={{
-            fontSize: 11,
-            color: "#484f58",
-            fontWeight: 600,
-            letterSpacing: 1,
-            flexShrink: 0,
-          }}
-        >
-          AI 諮詢
-        </span>
+        {/* 對話切換（有多個才顯示） */}
+        {total > 1 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+            <button onClick={goPrev} disabled={loading} style={navBtnS(loading)}>‹</button>
+            <span style={{ fontSize: 11, color: "#484f58", minWidth: 28, textAlign: "center" }}>
+              {currentIdx + 1}/{total}
+            </span>
+            <button onClick={goNext} disabled={loading} style={navBtnS(loading)}>›</button>
+          </div>
+        )}
 
-        {/* 對話切換 */}
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 12,
-            overflow: "hidden",
-          }}
-        >
-          <button
-            onClick={goPrev}
-            disabled={loading || total <= 1}
-            title="上一個對話"
-            style={navBtnS(loading || total <= 1)}
-          >
-            ‹
-          </button>
-
-          {/* 標題：可點擊重新命名 */}
+        {/* 對話名稱 — 雙擊重命名 */}
+        <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
           {renaming ? (
             <input
               ref={renameRef}
@@ -207,77 +179,59 @@ export default function RightPanel({ onClose }) {
                 if (e.key === "Escape") setRenaming(false);
               }}
               style={{
-                width: 80,
-                fontSize: 10,
+                width: "100%",
+                fontSize: 12,
                 background: "#21262d",
                 border: "1px solid #58a6ff",
                 borderRadius: 3,
                 color: "#cdd9e5",
-                padding: "1px 4px",
+                padding: "2px 8px",
                 outline: "none",
               }}
               placeholder="對話名稱"
             />
           ) : (
             <span
-              title={`${activeTitle}\n點擊重新命名`}
-              onClick={startRename}
+              onDoubleClick={startRename}
+              title="雙擊重新命名"
               style={{
-                fontSize: 10,
+                fontSize: 12,
                 color: "#8b949e",
-                maxWidth: 80,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
-                cursor: "text",
+                cursor: "default",
+                display: "block",
+                userSelect: "none",
               }}
             >
-              {truncTitle}
-            </span>
-          )}
-
-          <button
-            onClick={goNext}
-            disabled={loading || total <= 1}
-            title="下一個對話"
-            style={navBtnS(loading || total <= 1)}
-          >
-            ›
-          </button>
-          {total > 1 && (
-            <span style={{ fontSize: 9, color: "#484f58", flexShrink: 0 }}>
-              {currentIdx + 1}/{total}
+              {activeTitle}
             </span>
           )}
         </div>
 
-        {/* 新增 & ⋮ 選單 */}
+        {/* ↓ 匯出 */}
         <button
-          onClick={() => addConversation()}
-          disabled={loading}
-          title="新增對話"
-          style={iconBtnS(loading)}
+          onClick={() => exportChat(messages, activeTitle)}
+          disabled={messages.length === 0}
+          title="匯出對話紀錄"
+          style={iconBtnS(messages.length === 0)}
         >
-          +
+          ↓
         </button>
 
+        {/* ··· 分組 / 清除 / 刪除 */}
         <div ref={menuRef} style={{ position: "relative" }}>
-          <button
-            onClick={() => setMenuOpen((v) => !v)}
-            title="更多選項"
-            style={iconBtnS(false)}
-          >
-            ⋮
+          <button onClick={() => setMenuOpen((v) => !v)} title="更多" style={iconBtnS(false)}>
+            ···
           </button>
-
-          {/* 下拉選單 */}
           {menuOpen && (
             <div
               style={{
                 position: "absolute",
                 top: "calc(100% + 4px)",
                 right: 0,
-                width: 160,
+                width: 168,
                 background: "#161b22",
                 border: "1px solid #30363d",
                 borderRadius: 6,
@@ -286,107 +240,64 @@ export default function RightPanel({ onClose }) {
                 overflow: "hidden",
               }}
             >
-              {/* 重新命名 */}
-              <MenuItem onClick={startRename}>✏ 重新命名</MenuItem>
-
-              {/* 分組 */}
-              <div
-                style={{
-                  padding: "6px 12px 4px",
-                  fontSize: 10,
-                  color: "#484f58",
-                  letterSpacing: 0.5,
-                  borderTop: "1px solid #21262d",
-                }}
-              >
+              <div style={{ padding: "6px 12px 4px", fontSize: 10, color: "#484f58", letterSpacing: 0.5 }}>
                 分組
               </div>
               {projectGroups.map((g) => (
-                <MenuItem
-                  key={g}
-                  onClick={() => handleGroupChange(g)}
-                  active={g === currentGroup}
-                >
-                  {g === currentGroup ? "● " : "○ "}
-                  {g}
+                <MenuItem key={g} onClick={() => handleGroupChange(g)} active={g === currentGroup}>
+                  {g === currentGroup ? "● " : "○ "}{g}
                 </MenuItem>
               ))}
-              <div
-                style={{
-                  padding: "4px 8px",
-                  display: "flex",
-                  gap: 4,
-                  borderTop: "1px solid #21262d",
-                }}
-              >
+              <div style={{ padding: "4px 8px", display: "flex", gap: 4, borderTop: "1px solid #21262d" }}>
                 <input
                   value={newGroupInput}
                   onChange={(e) => setNewGroupInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddGroup()}
                   placeholder="新分組名稱"
                   style={{
-                    flex: 1,
-                    fontSize: 10,
-                    background: "#0d1117",
-                    border: "1px solid #30363d",
-                    borderRadius: 3,
-                    color: "#cdd9e5",
-                    padding: "2px 6px",
-                    outline: "none",
+                    flex: 1, fontSize: 10, background: "#0d1117",
+                    border: "1px solid #30363d", borderRadius: 3,
+                    color: "#cdd9e5", padding: "2px 6px", outline: "none",
                   }}
                 />
                 <button
                   onClick={handleAddGroup}
                   style={{
-                    fontSize: 10,
-                    background: "transparent",
-                    border: "1px solid #30363d",
-                    borderRadius: 3,
-                    color: "#8b949e",
-                    padding: "2px 6px",
-                    cursor: "pointer",
+                    fontSize: 10, background: "transparent", border: "1px solid #30363d",
+                    borderRadius: 3, color: "#8b949e", padding: "2px 6px", cursor: "pointer",
                   }}
-                >
-                  +
-                </button>
+                >+</button>
               </div>
-
-              {/* 清除 & 刪除 */}
               <div style={{ borderTop: "1px solid #21262d" }} />
               <MenuItem
-                onClick={() => {
-                  clearConversation();
-                  setMenuOpen(false);
-                }}
+                onClick={() => { clearConversation(); setMenuOpen(false); }}
                 disabled={messages.length === 0}
               >
                 ✕ 清除內容
               </MenuItem>
-              <MenuItem onClick={handleDelete} danger>
-                🗑 刪除對話
-              </MenuItem>
+              <MenuItem onClick={handleDelete} danger>🗑 刪除對話</MenuItem>
             </div>
           )}
         </div>
 
+        {/* + 新增對話 */}
+        <button onClick={() => addConversation()} disabled={loading} title="新增對話" style={iconBtnS(loading)}>
+          +
+        </button>
+
+        {/* ✕ 關閉 */}
         {onClose && (
-          <button
-            onClick={onClose}
-            title="關閉"
-            style={iconBtnS(false)}
-          >
-            ✕
-          </button>
+          <button onClick={onClose} title="關閉" style={iconBtnS(false)}>✕</button>
         )}
       </div>
 
-      {/* 快速問題 */}
+      {/* 快速問題 — flex-wrap chips 顯示完整問題文字 */}
       <div
         style={{
-          padding: "6px 8px",
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 4,
+          padding: "6px 10px",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 5,
           flexShrink: 0,
           borderBottom: "1px solid #21262d",
         }}
@@ -396,21 +307,32 @@ export default function RightPanel({ onClose }) {
             key={q.label}
             onClick={() => {
               sendMessage(q.text);
-              setQuickQuestions(pickRandom(4, QUESTION_POOL));
+              setQuickQuestions(pickRandom(4, QUESTION_POOL, quickQuestions.map((x) => x.label)));
             }}
             disabled={loading}
             style={{
-              padding: "5px 8px",
-              fontSize: 12,
-              borderRadius: 4,
+              padding: "4px 10px",
+              fontSize: 11,
+              borderRadius: 12,
               border: "1px solid #30363d",
               background: "transparent",
               color: loading ? "#484f58" : "#8b949e",
               cursor: loading ? "not-allowed" : "pointer",
-              textAlign: "center",
+              whiteSpace: "nowrap",
+              transition: "border-color .15s, color .15s",
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                e.currentTarget.style.borderColor = "#58a6ff";
+                e.currentTarget.style.color = "#58a6ff";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#30363d";
+              e.currentTarget.style.color = loading ? "#484f58" : "#8b949e";
             }}
           >
-            {q.label}
+            {q.text}
           </button>
         ))}
       </div>
@@ -478,14 +400,13 @@ function MenuItem({ children, onClick, disabled, danger, active }) {
 
 const navBtnS = (disabled) => ({
   background: "transparent",
-  border: `1px solid ${disabled ? "#30363d" : "#30363d"}`,
-  color: disabled ? "#30363d" : "#8b949e",
+  border: "none",
+  color: disabled ? "#30363d" : "#484f58",
   cursor: disabled ? "default" : "pointer",
   fontSize: 16,
   fontWeight: 600,
   lineHeight: 1,
-  padding: "6px 10px",
-  borderRadius: 6,
+  padding: "2px 4px",
   flexShrink: 0,
 });
 
@@ -494,8 +415,10 @@ const iconBtnS = (disabled) => ({
   border: "1px solid #30363d",
   color: disabled ? "#30363d" : "#8b949e",
   cursor: disabled ? "default" : "pointer",
-  fontSize: 11,
-  padding: "1px 5px",
-  borderRadius: 3,
+  fontSize: 13,
+  padding: "3px 9px",
+  borderRadius: 4,
   flexShrink: 0,
+  minWidth: 28,
+  lineHeight: 1,
 });

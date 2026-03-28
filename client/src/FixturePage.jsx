@@ -1777,7 +1777,10 @@ function StocktakeModal({ fixtures, onClose, onComplete }) {
   const [actuals, setActuals] = useState({});
   const [loading, setLoading] = useState(false);
 
-  const active = fixtures.filter((f) => f.status === "ok" || f.status === "shortage" || f.status === "out_of_stock");
+  const active = fixtures.filter((f) => {
+    const s = getStatus(f);
+    return s === "ok" || s === "shortage" || s === "out_of_stock";
+  });
 
   const handleSubmit = async () => {
     setLoading(true);

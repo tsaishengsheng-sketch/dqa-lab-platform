@@ -820,8 +820,8 @@ function BlockDeviceModal({ onClose, onCreated }) {
 
   return (
     <div style={overlayStyle} onClick={onClose}>
-      <div style={{ ...modalStyle, width: 420 }} onClick={(e) => e.stopPropagation()}>
-        <div style={modalHeader}>
+      <div style={{ ...modalStyle, width: 420, overflow: "visible" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ ...modalHeader, borderRadius: "10px 10px 0 0" }}>
           <span style={{ fontSize: 15, fontWeight: 700, color: "#cdd9e5" }}>標記設備不可用時段</span>
           <button onClick={onClose} style={closeBtn}>✕</button>
         </div>
@@ -914,6 +914,7 @@ const inputStyle = {
   width: "100%", background: "#0d1117", border: "1px solid #30363d",
   borderRadius: 6, padding: "7px 10px", color: "#cdd9e5",
   fontSize: 13, boxSizing: "border-box", outline: "none",
+  colorScheme: "dark",
 };
 const labelStyle = { fontSize: 12, color: "#8b949e", marginBottom: 4, fontWeight: 600 };
 const primaryBtn = {

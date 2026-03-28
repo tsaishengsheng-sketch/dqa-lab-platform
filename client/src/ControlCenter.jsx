@@ -930,8 +930,8 @@ export default function ControlCenter({ role, userId, displayName, onLogout }) {
         />
       </div>
 
-      {/* AI FAB */}
-      <button
+      {/* AI FAB — 面板開啟時隱藏 */}
+      {!aiOpen && <button
         onClick={() => setAiOpen((v) => !v)}
         title="AI 諮詢"
         style={{
@@ -954,7 +954,7 @@ export default function ControlCenter({ role, userId, displayName, onLogout }) {
         }}
       >
         🤖
-      </button>
+      </button>}
 
       {/* 點背景關閉 */}
       {aiOpen && (

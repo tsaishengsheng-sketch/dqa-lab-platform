@@ -52,6 +52,38 @@ export default function ChatArea({
               描述你的產品或測試需求，AI 將從 5 大法規、78
               個測試條件中推薦最適合的方案。
             </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+              {[
+                "工業乙太網設備要選哪個測試標準？",
+                "IEC 60068-2-14 有哪些溫度循環條件？",
+              ].map((q) => (
+                <button
+                  key={q}
+                  onClick={() => onSend(q)}
+                  style={{
+                    background: "#0d1117",
+                    border: "1px solid #30363d",
+                    borderRadius: 8,
+                    color: "#8b949e",
+                    fontSize: 13,
+                    padding: "10px 14px",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    transition: "border-color .15s, color .15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "#58a6ff";
+                    e.currentTarget.style.color = "#cdd9e5";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "#30363d";
+                    e.currentTarget.style.color = "#8b949e";
+                  }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
             <div style={S.emptyDisclaimer}>{DISCLAIMER}</div>
           </div>
         )}

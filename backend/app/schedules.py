@@ -217,9 +217,13 @@ def _get_condition_names(conditions: List[str]) -> List[str]:
     return names
 
 
+def _parse_conditions(raw: Optional[str]) -> list:
+    return json.loads(raw) if raw else []
+
+
 def _enrich(s: Schedule) -> dict:
     """Schedule ORM → dict，附加計算欄位"""
-    conditions = json.loads(s.conditions) if s.conditions else []
+    conditions = _parse_conditions(s.conditions)
     d = {
         "id": s.id,
         "project_number": s.project_number,
@@ -557,7 +561,7 @@ async def patch_schedule(schedule_id: int, body: SchedulePatch, request: Request
         if body.status == "已確認":
             if s.status != "待審核":
                 raise HTTPException(status_code=409, detail=f"排程已是「{s.status}」，無法重複確認")
-            conditions = json.loads(s.conditions) if s.conditions else []
+            conditions = _parse_conditions(s.conditions)
             cache = getattr(request.app.state, "AICM_CACHE", {})
             running_until = _build_running_until(cache)
             stuck_devices = _get_stuck_devices(cache)
