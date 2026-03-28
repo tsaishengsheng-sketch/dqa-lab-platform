@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import api, { API_BASE } from "./api";
+import { downloadBlob, buildReportFilename } from "./utils/download";
 import {
   LineChart,
   Line,
@@ -267,27 +268,13 @@ const DeviceCard = ({ device, selected, onClick }) => {
   );
 };
 
-// 修改：報告下載改用 axios blob，帶 X-Demo-Password header
-const downloadCsv = async (execId, sopId) => {
-  try {
-    const res = await api.get(`/api/reports/csv/${execId}`, {
-      responseType: "blob",
-    });
-    const url = window.URL.createObjectURL(new Blob([res.data]));
-    const a = document.createElement("a");
-    a.href = url;
-    const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const safeSopId = (sopId || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_");
-    a.download = `${safeSopId}_${date}_${execId}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
-  } catch (e) {
-    console.error("[Dashboard] CSV download failed:", e);
-    alert("❌ 報告下載失敗，請確認後端連線。");
-  }
-};
+const downloadCsv = (execId, sopId) =>
+  downloadBlob(`/api/reports/csv/${execId}`, buildReportFilename(sopId, execId, "csv"))
+    .catch((e) => { console.error("[Dashboard] CSV download failed:", e); alert("❌ 報告下載失敗，請確認後端連線。"); });
+
+const downloadPdf = (execId, sopId) =>
+  downloadBlob(`/api/reports/pdf/${execId}`, buildReportFilename(sopId, execId, "pdf"))
+    .catch((e) => { console.error("[Dashboard] PDF download failed:", e); alert("❌ 報告下載失敗，請確認後端連線。"); });
 
 const fmtDatetime = (str) => {
   if (!str || str === "N/A") return "—";
@@ -682,8 +669,7 @@ const Dashboard = ({ active = true }) => {
                   <td style={{ padding: "8px 12px", color: "#8b949e" }}>
                     {fmtDatetime(ex.test_started_at || ex.created_at)}
                   </td>
-                  <td style={{ padding: "8px 12px" }}>
-                    {/* 修改：改用 axios blob 下載，帶 auth header */}
+                  <td style={{ padding: "8px 12px", display: "flex", gap: 6 }}>
                     <button
                       onClick={() => downloadCsv(ex.id, ex.sop_id)}
                       style={{
@@ -698,6 +684,21 @@ const Dashboard = ({ active = true }) => {
                       }}
                     >
                       📥 CSV
+                    </button>
+                    <button
+                      onClick={() => downloadPdf(ex.id, ex.sop_id)}
+                      style={{
+                        padding: "4px 10px",
+                        background: "#238636",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 4,
+                        cursor: "pointer",
+                        fontSize: 11,
+                        fontWeight: 600,
+                      }}
+                    >
+                      📄 PDF
                     </button>
                   </td>
                 </tr>
