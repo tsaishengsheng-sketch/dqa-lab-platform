@@ -118,9 +118,30 @@ class FixtureLoan(Base):
         DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
 
+    schedule_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("schedules.id"), nullable=True, index=True
+    )
+
     __table_args__ = (
         Index("ix_fixture_loans_status", "status"),
         Index("ix_fixture_loans_due_date", "due_date"),
+    )
+
+
+# ---------- 排程治具關聯（中間表）----------
+class ScheduleFixture(Base):
+    __tablename__ = "schedule_fixtures"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    schedule_id: Mapped[int] = mapped_column(
+        ForeignKey("schedules.id"), index=True
+    )
+    fixture_id: Mapped[int] = mapped_column(
+        ForeignKey("fixtures.id"), index=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
 
 

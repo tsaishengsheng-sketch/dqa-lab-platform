@@ -9,7 +9,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
-from .models import SessionLocal, Schedule, DeviceBlockedPeriod, User
+from .models import SessionLocal, Schedule, DeviceBlockedPeriod, User, ScheduleFixture, Fixture, FixtureLoan
 from .standards import STANDARD_TREE, get_standard
 from .sop import DEVICE_IDS
 from .line import push_sop_notification
@@ -23,6 +23,11 @@ INTER_CONDITION_BUFFER_HOURS = 0.5  # 條件間設備穩定緩衝（30 分鐘）
 # ── Pydantic Schemas ────────────────────────────────────────────────────────
 
 
+class FixtureItem(BaseModel):
+    fixture_id: int
+    quantity: int = 1
+
+
 class ScheduleCreate(BaseModel):
     project_number: str
     sample_name: str
@@ -30,6 +35,7 @@ class ScheduleCreate(BaseModel):
     conditions: List[str]  # sop_id list
     note: Optional[str] = None
     applicant_name: Optional[str] = None
+    fixtures: List[FixtureItem] = []
 
 
 class SchedulePatch(BaseModel):
@@ -221,10 +227,30 @@ def _parse_conditions(raw: Optional[str]) -> list:
     return json.loads(raw) if raw else []
 
 
-def _enrich(s: Schedule) -> dict:
+def _get_schedule_fixtures(schedule_id: int, db) -> list:
+    """查詢排程治具清單，一次批次載入 Fixture 資料（避免 N+1）"""
+    sfs = db.query(ScheduleFixture).filter(ScheduleFixture.schedule_id == schedule_id).all()
+    if not sfs:
+        return []
+    fixture_map = {
+        f.id: f
+        for f in db.query(Fixture).filter(Fixture.id.in_([sf.fixture_id for sf in sfs])).all()
+    }
+    return [
+        {
+            "fixture_id": sf.fixture_id,
+            "quantity": sf.quantity,
+            "interface_type": fixture_map[sf.fixture_id].interface_type if sf.fixture_id in fixture_map else "",
+            "form_factor": fixture_map[sf.fixture_id].form_factor if sf.fixture_id in fixture_map else "",
+        }
+        for sf in sfs
+    ]
+
+
+def _enrich(s: Schedule, db=None) -> dict:
     """Schedule ORM → dict，附加計算欄位"""
     conditions = _parse_conditions(s.conditions)
-    d = {
+    return {
         "id": s.id,
         "project_number": s.project_number,
         "sample_name": s.sample_name,
@@ -243,8 +269,8 @@ def _enrich(s: Schedule) -> dict:
         "updated_at": s.updated_at,
         "total_hours": _calc_total_hours(conditions),
         "condition_names": _get_condition_names(conditions),
+        "fixtures": _get_schedule_fixtures(s.id, db) if db is not None else [],
     }
-    return d
 
 
 # ── 自動排程邏輯 ────────────────────────────────────────────────────────────
@@ -363,6 +389,14 @@ def auto_advance_schedules():
         for s in to_done:
             s.status = "已完成"
             s.updated_at = now
+            # 自動歸還此排程的借出治具
+            db.query(FixtureLoan).filter(
+                FixtureLoan.schedule_id == s.id,
+                FixtureLoan.status == "loaned",
+            ).update(
+                {"status": "returned", "return_date": now},
+                synchronize_session=False,
+            )
 
         if to_running or to_done:
             db.commit()
@@ -444,7 +478,7 @@ def get_gantt(request: Request):
         blocked = db.query(DeviceBlockedPeriod).all()
 
         return {
-            "schedules": [_enrich(s) for s in schedules],
+            "schedules": [_enrich(s, db) for s in schedules],
             "blocked_periods": [
                 {
                     "id": b.id,
@@ -467,7 +501,7 @@ def list_schedules(request: Request, status: Optional[str] = None):
         if status:
             q = q.filter(Schedule.status == status)
         schedules = q.order_by(Schedule.created_at.desc()).limit(200).all()
-        return [_enrich(s) for s in schedules]
+        return [_enrich(s, db) for s in schedules]
 
 
 @router.get("/{schedule_id}")
@@ -476,7 +510,7 @@ def get_schedule(schedule_id: int):
         s = db.query(Schedule).filter(Schedule.id == schedule_id).first()
         if not s:
             raise HTTPException(status_code=404, detail="找不到排程")
-        return _enrich(s)
+        return _enrich(s, db)
 
 
 @router.post("")
@@ -517,9 +551,16 @@ def create_schedule(body: ScheduleCreate, request: Request):
             created_by=user_id,
         )
         db.add(s)
+        db.flush()
+        for fi in body.fixtures:
+            db.add(ScheduleFixture(
+                schedule_id=s.id,
+                fixture_id=fi.fixture_id,
+                quantity=fi.quantity,
+            ))
         db.commit()
         db.refresh(s)
-        return _enrich(s)
+        return _enrich(s, db)
 
 
 @router.patch("/{schedule_id}")
@@ -584,6 +625,20 @@ async def patch_schedule(schedule_id: int, body: SchedulePatch, request: Request
             s.status = "已確認"
             s.confirmed_by = user_id
 
+            # 自動建立治具預約（reserved）
+            for sf in db.query(ScheduleFixture).filter(ScheduleFixture.schedule_id == s.id).all():
+                db.add(FixtureLoan(
+                    fixture_id=sf.fixture_id,
+                    borrower_name=s.applicant_name or "排程系統",
+                    borrower_user_id=s.applicant_user_id,
+                    device_id=device_id,
+                    project_name=f"{s.project_number} / {s.sample_name}",
+                    quantity=sf.quantity,
+                    due_date=end,
+                    status="reserved",
+                    schedule_id=s.id,
+                ))
+
             def _fmt(dt):
                 if dt is None:
                     return "—"
@@ -609,6 +664,12 @@ async def patch_schedule(schedule_id: int, body: SchedulePatch, request: Request
                 s.end_time = body.end_time
 
             if body.status == "已取消":
+                # 清除此排程的 reserved 治具預約
+                db.query(FixtureLoan).filter(
+                    FixtureLoan.schedule_id == schedule_id,
+                    FixtureLoan.status == "reserved",
+                ).delete(synchronize_session=False)
+
                 # 只有 admin 取消別人的排程才通知申請人
                 if role == "admin" and applicant_user_id and applicant_user_id != user_id:
                     notif_user_id = applicant_user_id
@@ -629,7 +690,7 @@ async def patch_schedule(schedule_id: int, body: SchedulePatch, request: Request
         s.updated_at = datetime.datetime.now(datetime.timezone.utc)
         db.commit()
         db.refresh(s)
-        result = _enrich(s)
+        result = _enrich(s, db)
 
     # DB session 關閉後再推播，避免阻塞
     if notif_text:

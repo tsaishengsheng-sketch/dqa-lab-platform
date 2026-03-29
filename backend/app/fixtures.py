@@ -111,7 +111,7 @@ def _calc_loaned(db, fixture_id: int) -> int:
     from sqlalchemy import func
     result = (
         db.query(func.sum(FixtureLoan.quantity))
-        .filter(FixtureLoan.fixture_id == fixture_id, FixtureLoan.status == "loaned")
+        .filter(FixtureLoan.fixture_id == fixture_id, FixtureLoan.status.in_(["loaned", "reserved"]))
         .scalar()
     )
     return result or 0

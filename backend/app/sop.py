@@ -8,7 +8,7 @@ import shutil
 from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-from .models import SessionLocal, SopTemplate, DeviceState, SopExecution, StepRecord, User
+from .models import SessionLocal, SopTemplate, DeviceState, SopExecution, StepRecord, User, Schedule, FixtureLoan
 from .standards import STANDARDS_AND_SOPS, get_standard_tree
 from .utils import _save_device_state
 from .line import push_message, push_to_user, push_sop_notification
@@ -146,6 +146,23 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
             }
         )
         _save_device_state(device_id, device)
+
+    # 將此設備「進行中」排程的預約治具轉為借出
+    try:
+        with SessionLocal() as db:
+            active_schedule = (
+                db.query(Schedule)
+                .filter(Schedule.device_id == device_id, Schedule.status == "進行中")
+                .first()
+            )
+            if active_schedule:
+                db.query(FixtureLoan).filter(
+                    FixtureLoan.schedule_id == active_schedule.id,
+                    FixtureLoan.status == "reserved",
+                ).update({"status": "loaned", "loan_date": now}, synchronize_session=False)
+                db.commit()
+    except Exception as e:
+        logger.warning(f"[{device_id}] 治具預約轉借出失敗：{e}")
 
     logger.info(f"[{device_id}] Started SOP: {sop_id} ({sop_name}) by {operator or '未填寫'}")
 
