@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import api from "./api";
 import { useToast } from "./components/Toast";
 import { DEVICE_IDS, parseUtcDate } from "./constants";
@@ -19,6 +19,12 @@ const STATUS_COLOR = {
 };
 
 const STATUS_LIST = ["待審核", "已確認", "進行中", "已完成", "已取消"];
+
+// 時間常數
+const BUFFER_TIME_HOURS = 0.5;           // 條件間緩衝時間
+const MS_PER_DAY = 24 * 60 * 60 * 1000;  // 毫秒/天
+const GANTT_PAST_DAYS = 3;               // 甘特圖過去天數
+const GANTT_FUTURE_DAYS = 30;            // 甘特圖未來天數
 
 function fmtDt(dt) {
   if (!dt) return "—";
@@ -344,13 +350,20 @@ function ConditionPicker({ standardsTree, selected, onChange }) {
 
 // ── 申請 Modal ──────────────────────────────────────────────────────────────
 
-function NewScheduleModal({ standardsTree, onClose, onCreated }) {
+function NewScheduleModal({ standardsTree, sopIdMap, initialConditions, onClose, onCreated }) {
   const { showToast } = useToast();
+  const initStd = useMemo(() => {
+    const fallback = Object.keys(standardsTree)[0] || "";
+    if (initialConditions?.length > 0 && sopIdMap) {
+      return sopIdMap[initialConditions[0]]?.stdName || fallback;
+    }
+    return fallback;
+  }, [initialConditions, sopIdMap, standardsTree]);
   const [form, setForm] = useState({
     project_number: "",
     sample_name: "",
-    standard: Object.keys(standardsTree)[0] || "",
-    conditions: [],
+    standard: initStd,
+    conditions: initialConditions || [],
     fixtures: [],  // [{ fixture_id, quantity }]
     note: "",
   });
@@ -365,9 +378,9 @@ function NewScheduleModal({ standardsTree, onClose, onCreated }) {
   }, []);
 
   const totalHours = form.conditions.reduce((acc, sop_id) => {
-    const std = findStd(standardsTree, sop_id);
+    const std = findStd(sop_id);
     return acc + (std?.estimated_hours || 0);
-  }, 0) + Math.max(0, form.conditions.length - 1) * 0.5;
+  }, 0) + Math.max(0, form.conditions.length - 1) * BUFFER_TIME_HOURS;
 
   // 條件改變時自動獲取預覽（時間）
   useEffect(() => {
@@ -384,15 +397,8 @@ function NewScheduleModal({ standardsTree, onClose, onCreated }) {
       .finally(() => setPreviewing(false));
   }, [form.conditions]);
 
-  function findStd(tree, sop_id) {
-    for (const std of Object.values(tree)) {
-      for (const ver of Object.values(std.versions)) {
-        for (const t of Object.values(ver.tests)) {
-          if (t.sop_id === sop_id) return t;
-        }
-      }
-    }
-    return null;
+  function findStd(sop_id) {
+    return sopIdMap?.[sop_id]?.test || null;
   }
 
   async function submit() {
@@ -454,7 +460,7 @@ function NewScheduleModal({ standardsTree, onClose, onCreated }) {
             }}>
               <div style={{ fontSize: 12, color: "#8b949e", marginBottom: 6 }}>已選條件（依序執行）</div>
               {form.conditions.map((sop_id, i) => {
-                const t = findStd(standardsTree, sop_id);
+                const t = findStd(sop_id);
                 return (
                   <div key={sop_id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                     <span style={{ fontSize: 11, color: "#484f58", width: 18 }}>{i + 1}.</span>
@@ -1007,7 +1013,7 @@ const cancelBtn = {
 
 // ── 主頁面 ───────────────────────────────────────────────────────────────────
 
-export default function SchedulePage({ active, role, userId }) {
+export default function SchedulePage({ active, role, userId, initConditions, onInitCondsConsumed }) {
   const [schedules, setSchedules] = useState([]);
   const [blockedPeriods, setBlockedPeriods] = useState([]);
   const [standardsTree, setStandardsTree] = useState(null);
@@ -1016,17 +1022,43 @@ export default function SchedulePage({ active, role, userId }) {
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [showNewModal, setShowNewModal] = useState(false);
+  const [pendingInitConds, setPendingInitConds] = useState(null);
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState(null);
+  const lastInitCondsRef = useRef(null);
+
+  // 預先構建 sop_id → { stdName, test object } 的 reverse map，O(1) 查詢
+  const sopIdMap = useMemo(() => {
+    if (!standardsTree) return {};
+    const map = {};
+    for (const [stdName, std] of Object.entries(standardsTree)) {
+      for (const ver of Object.values(std.versions)) {
+        for (const t of Object.values(ver.tests)) {
+          map[t.sop_id] = { stdName, test: t };
+        }
+      }
+    }
+    return map;
+  }, [standardsTree]);
+
+  // AI 面板「申請此測試」觸發：切到排程 tab 並帶入預填條件
+  useEffect(() => {
+    if (initConditions && initConditions !== lastInitCondsRef.current && standardsTree) {
+      lastInitCondsRef.current = initConditions;
+      setPendingInitConds(initConditions);
+      setShowNewModal(true);
+      onInitCondsConsumed?.();
+    }
+  }, [initConditions, standardsTree, onInitCondsConsumed]);
 
   // 顯示今天前 3 天 ~ 後 30 天
   const rangeStart = (() => {
     const d = new Date();
-    d.setDate(d.getDate() - 3);
+    d.setDate(d.getDate() - GANTT_PAST_DAYS);
     d.setHours(0, 0, 0, 0);
     return d.getTime();
   })();
-  const rangeEnd = rangeStart + (33 * 86400000);
+  const rangeEnd = rangeStart + ((GANTT_PAST_DAYS + GANTT_FUTURE_DAYS) * MS_PER_DAY);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -1114,7 +1146,7 @@ export default function SchedulePage({ active, role, userId }) {
           </button>
         )}
         {canOperate && (
-          <button onClick={() => setShowNewModal(true)} style={primaryBtn}>
+          <button onClick={() => { setPendingInitConds(null); setShowNewModal(true); }} style={primaryBtn}>
             + 申請排程
           </button>
         )}
@@ -1304,13 +1336,16 @@ export default function SchedulePage({ active, role, userId }) {
       </div>
 
       {/* Modals */}
-      {showNewModal && standardsTree && (
+      {showNewModal && standardsTree && sopIdMap && (
         <NewScheduleModal
           standardsTree={standardsTree}
-          onClose={() => setShowNewModal(false)}
+          sopIdMap={sopIdMap}
+          initialConditions={pendingInitConds}
+          onClose={() => { setShowNewModal(false); setPendingInitConds(null); }}
           onCreated={(s) => {
             setSchedules((prev) => [s, ...prev]);
             setShowNewModal(false);
+            setPendingInitConds(null);
           }}
         />
       )}

@@ -57,9 +57,10 @@ alembic upgrade head
 | 環境測試標準 | 5 法規 78 條件，三層 STANDARD_TREE |
 | SOP 執行 | 自動確認步驟、自動存報告、LINE 五時機推播 |
 | ISO 17025 報告 | PDF 報告生成（含 GUM 量測不確定度 Type A/B/uc/U）、CSV 報告 |
-| 治具管理 | 借出/歸還/逾期/盤點/採購/汰換，Excel upsert |
-| 排程系統 | 甘特圖、自動排程、即時預覽、不可用時段、自動推進 |
-| AI 諮詢 | Gemini 2.5 Flash-Lite、RAG 檢索、多輪對話 |
+| 治具管理 | 借出/歸還/逾期/盤點/採購/汰換，Excel upsert；與排程聯動（預約→借出→歸還） |
+| 排程系統 | 甘特圖、自動排程、即時預覽、不可用時段、自動推進；與 AI 聯動（申請此測試預填） |
+| AI 諮詢 | Gemini 2.5 Flash-Lite、RAG 檢索、多輪對話；推薦條件→直接申請排程 |
+| 三模組連動 | ✅ AI→排程、排程→治具預約、SOP→治具借出、完成→治具歸還 |
 | 存取控制 | 4 層（admin/keeper/engineer/guest）、IP Rate Limiting |
 | LINE Bot | 推播、綁定申請審核、取消申請、失敗記錄 |
 

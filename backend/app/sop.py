@@ -147,12 +147,12 @@ async def start_sop(request: Request, payload: Dict[str, Any] = Body(...)):
         )
         _save_device_state(device_id, device)
 
-    # 將此設備「進行中」排程的預約治具轉為借出
+    # 將此設備「已確認」或「進行中」排程的預約治具轉為借出
     try:
         with SessionLocal() as db:
             active_schedule = (
                 db.query(Schedule)
-                .filter(Schedule.device_id == device_id, Schedule.status == "進行中")
+                .filter(Schedule.device_id == device_id, Schedule.status.in_(["已確認", "進行中"]))
                 .first()
             )
             if active_schedule:

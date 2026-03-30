@@ -80,7 +80,9 @@ def _calc_estimated_end_at(item: dict) -> Optional[str]:
         ramp_up = abs(high_temp - ambient) / ramp_rate
         total_min = ramp_up + dwell_min + ramp_up
 
-    total_seconds = total_min * 60.0
+    # ISO 17025 常溫穩定時間（測試後需要 30 分鐘常溫環境穩定）
+    STABILIZATION_HOURS = 0.5
+    total_seconds = (total_min + STABILIZATION_HOURS * 60) * 60.0
 
     if isinstance(started_at, str):
         started_dt = datetime.datetime.fromisoformat(started_at.replace("Z", "+00:00"))
