@@ -413,3 +413,48 @@ class NotificationFailure(Base):
 # ---------- 資料庫初始化 ----------
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _ensure_admin_user()
+
+
+def _ensure_admin_user():
+    """Ensure the admin user exists with a known password.
+
+    Recovery helper: if the admin account is missing it will be created;
+    if it already exists its password will be reset to the value supplied
+    via the ADMIN_PASSWORD environment variable (default: "admin123").
+    This guarantees a working admin login after every database
+    initialisation, which is especially useful when the original password
+    has been forgotten.
+    """
+    import os as _os
+    from app.auth import hash_password as _hash_password  # local import to avoid circular
+
+    recovery_password = _os.getenv("ADMIN_PASSWORD", "admin123")
+
+    db = SessionLocal()
+    try:
+        admin = db.query(User).filter(User.username == "admin").first()
+        if admin is None:
+            admin = User(
+                username="admin",
+                display_name="Admin",
+                hashed_password=_hash_password(recovery_password),
+                role="admin",
+                is_active=True,
+            )
+            db.add(admin)
+            db.commit()
+            import logging as _logging
+            _logging.getLogger("app").info(
+                "init_db: admin user created with the configured recovery password."
+            )
+        else:
+            admin.hashed_password = _hash_password(recovery_password)
+            admin.is_active = True
+            db.commit()
+            import logging as _logging
+            _logging.getLogger("app").info(
+                "init_db: admin user password reset to the configured recovery password."
+            )
+    finally:
+        db.close()
