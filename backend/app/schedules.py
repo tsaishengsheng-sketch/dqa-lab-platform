@@ -76,6 +76,13 @@ class BlockedPeriodCreate(BaseModel):
     reason: Optional[str] = None
 
 
+class BlockedPeriodPatch(BaseModel):
+    device_id: Optional[str] = None
+    start_time: Optional[datetime.datetime] = None
+    end_time: Optional[datetime.datetime] = None
+    reason: Optional[str] = None
+
+
 class BlockedPeriodOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -150,6 +157,21 @@ def _est_end_from_device(device: dict) -> Optional[datetime.datetime]:
     """從 AICM_CACHE 設備 dict 估算測試結束時間（UTC）；設備不在執行中則回傳 None"""
     if device.get("status") not in ("RUNNING", "PAUSED", "FINISHING"):
         return None
+
+    # 優先使用 devices.py 已算好的 estimated_end_at（含常溫穩定時間）
+    cached_end = device.get("estimated_end_at")
+    if cached_end:
+        try:
+            if isinstance(cached_end, str):
+                dt = datetime.datetime.fromisoformat(cached_end.replace("Z", "+00:00"))
+            else:
+                dt = cached_end
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            return dt
+        except Exception:
+            pass
+
     started_at = device.get("started_at")
     active_sop_json = device.get("active_sop_json")
     if not started_at or not active_sop_json:
@@ -766,6 +788,33 @@ def create_blocked_period(body: BlockedPeriodCreate, request: Request):
             "end_time": b.end_time,
             "reason": b.reason,
         }
+
+
+@blocked_router.patch("/{period_id}")
+def update_blocked_period(period_id: int, body: BlockedPeriodPatch, request: Request):
+    role = getattr(request.state, "user_role", None)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="僅管理者可操作")
+
+    with SessionLocal() as db:
+        b = db.query(DeviceBlockedPeriod).filter(DeviceBlockedPeriod.id == period_id).first()
+        if not b:
+            raise HTTPException(status_code=404, detail="找不到紀錄")
+        if body.device_id is not None:
+            if body.device_id not in DEVICE_IDS:
+                raise HTTPException(status_code=400, detail=f"無效的設備 ID：{body.device_id}")
+            b.device_id = body.device_id
+        if body.start_time is not None:
+            b.start_time = body.start_time
+        if body.end_time is not None:
+            b.end_time = body.end_time
+        if body.reason is not None:
+            b.reason = body.reason
+        if b.end_time <= b.start_time:
+            raise HTTPException(status_code=400, detail="結束時間必須晚於開始時間")
+        db.commit()
+        db.refresh(b)
+        return {"id": b.id, "device_id": b.device_id, "start_time": b.start_time, "end_time": b.end_time, "reason": b.reason}
 
 
 @blocked_router.delete("/{period_id}")

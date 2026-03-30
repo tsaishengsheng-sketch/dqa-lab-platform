@@ -713,13 +713,13 @@ function ScheduleDetailModal({ schedule, role, userId, onClose, onUpdated, onDel
 
   return (
     <div style={overlayStyle} onClick={onClose}>
-      <div style={{ ...modalStyle, width: 540 }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ ...modalStyle, width: 540, maxHeight: "88vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
         <div style={modalHeader}>
           <span style={{ fontSize: 16, fontWeight: 700, color: "#cdd9e5" }}>排程詳情</span>
           <button onClick={onClose} style={closeBtn}>✕</button>
         </div>
 
-        <div style={{ padding: "16px 20px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ padding: "16px 20px 20px", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{
               padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 700,
@@ -866,18 +866,64 @@ function ScheduleDetailModal({ schedule, role, userId, onClose, onUpdated, onDel
   );
 }
 
-// ── 標記不可用時段 Modal ────────────────────────────────────────────────────
+// ── 管理不可用時段 Modal ────────────────────────────────────────────────────
 
-function BlockDeviceModal({ onClose, onCreated }) {
+const EMPTY_FORM = { device_id: DEVICE_IDS[0], start_time: "", end_time: "", reason: "" };
+
+function toLocalInput(isoStr) {
+  if (!isoStr) return "";
+  const d = new Date(isoStr);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function ManageBlockedPeriodsModal({ onClose, onChanged }) {
   const { showToast } = useToast();
-  const [form, setForm] = useState({
-    device_id: DEVICE_IDS[0],
-    start_time: "",
-    end_time: "",
-    reason: "",
-  });
+  const [list, setList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState(null); // null = 新增模式, number = 編輯模式
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
+
+  async function fetchList() {
+    setLoading(true);
+    try {
+      const res = await api.get("/api/device-blocked-periods");
+      setList(res.data);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { fetchList(); }, []);
+
+  function openNew() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setError("");
+    setShowForm(true);
+  }
+
+  function openEdit(item) {
+    setEditingId(item.id);
+    setForm({
+      device_id: item.device_id,
+      start_time: toLocalInput(item.start_time),
+      end_time: toLocalInput(item.end_time),
+      reason: item.reason || "",
+    });
+    setError("");
+    setShowForm(true);
+  }
+
+  function cancelForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setError("");
+  }
 
   async function submit() {
     if (!form.start_time || !form.end_time) return setError("請填入開始與結束時間");
@@ -885,15 +931,23 @@ function BlockDeviceModal({ onClose, onCreated }) {
     setSaving(true);
     setError("");
     try {
-      const res = await api.post("/api/device-blocked-periods", {
+      const payload = {
         device_id: form.device_id,
         start_time: new Date(form.start_time).toISOString(),
         end_time: new Date(form.end_time).toISOString(),
         reason: form.reason.trim() || null,
-      });
-      onCreated(res.data);
-      showToast("不可用時段已添加", "success");
-      onClose();
+      };
+      if (editingId !== null) {
+        await api.patch(`/api/device-blocked-periods/${editingId}`, payload);
+        showToast("已更新", "success");
+      } else {
+        await api.post("/api/device-blocked-periods", payload);
+        showToast("已新增", "success");
+      }
+      setShowForm(false);
+      setEditingId(null);
+      await fetchList();
+      onChanged();
     } catch (e) {
       const msg = e.response?.data?.detail || "操作失敗";
       setError(msg);
@@ -903,46 +957,114 @@ function BlockDeviceModal({ onClose, onCreated }) {
     }
   }
 
+  async function handleDelete(id) {
+    setDeletingId(id);
+    try {
+      await api.delete(`/api/device-blocked-periods/${id}`);
+      showToast("已刪除", "success");
+      await fetchList();
+      onChanged();
+    } catch (e) {
+      showToast(e.response?.data?.detail || "刪除失敗", "error");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div style={overlayStyle} onClick={onClose}>
-      <div style={{ ...modalStyle, width: 420, overflow: "visible" }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ ...modalStyle, width: 560, maxHeight: "80vh", display: "flex", flexDirection: "column" }}
+        onClick={(e) => e.stopPropagation()}>
         <div style={{ ...modalHeader, borderRadius: "10px 10px 0 0" }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: "#cdd9e5" }}>標記設備不可用時段</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "#cdd9e5" }}>管理設備不可用時段</span>
           <button onClick={onClose} style={closeBtn}>✕</button>
         </div>
 
-        <div style={{ padding: "16px 20px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div>
-            <div style={labelStyle}>設備</div>
-            <select value={form.device_id} onChange={(e) => setForm((f) => ({ ...f, device_id: e.target.value }))}
-              style={inputStyle}>
-              {DEVICE_IDS.map((id) => <option key={id} value={id}>{id}</option>)}
-            </select>
+        {/* 列表區 */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <button onClick={openNew} style={primaryBtn}>+ 新增</button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <div style={labelStyle}>開始時間</div>
-              <input type="datetime-local" value={form.start_time}
-                onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value }))}
-                style={inputStyle} />
-            </div>
-            <div>
-              <div style={labelStyle}>結束時間</div>
-              <input type="datetime-local" value={form.end_time}
-                onChange={(e) => setForm((f) => ({ ...f, end_time: e.target.value }))}
-                style={inputStyle} />
-            </div>
-          </div>
-          <LabelInput label="原因" value={form.reason}
-            onChange={(v) => setForm((f) => ({ ...f, reason: v }))} placeholder="e.g. 年度校正" />
-          {error && <div style={{ color: "#f85149", fontSize: 13 }}>{error}</div>}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button onClick={onClose} style={cancelBtn}>取消</button>
-            <button onClick={submit} disabled={saving} style={primaryBtn}>
-              {saving ? "儲存中..." : "標記不可用"}
-            </button>
-          </div>
+
+          {loading ? (
+            <div style={{ color: "#8b949e", fontSize: 13, textAlign: "center", padding: 20 }}>載入中...</div>
+          ) : list.length === 0 ? (
+            <div style={{ color: "#484f58", fontSize: 13, textAlign: "center", padding: 20 }}>目前無不可用時段</div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ color: "#8b949e", borderBottom: "1px solid #30363d" }}>
+                  <th style={{ padding: "4px 8px", textAlign: "left", fontWeight: 500 }}>設備</th>
+                  <th style={{ padding: "4px 8px", textAlign: "left", fontWeight: 500 }}>開始</th>
+                  <th style={{ padding: "4px 8px", textAlign: "left", fontWeight: 500 }}>結束</th>
+                  <th style={{ padding: "4px 8px", textAlign: "left", fontWeight: 500 }}>原因</th>
+                  <th style={{ padding: "4px 8px", width: 72 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((item) => (
+                  <tr key={item.id} style={{ borderBottom: "1px solid #21262d", color: "#cdd9e5" }}>
+                    <td style={{ padding: "6px 8px", fontWeight: 600 }}>{item.device_id}</td>
+                    <td style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>{fmtDt(item.start_time)}</td>
+                    <td style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>{fmtDt(item.end_time)}</td>
+                    <td style={{ padding: "6px 8px", color: "#8b949e" }}>{item.reason || "—"}</td>
+                    <td style={{ padding: "6px 8px", display: "flex", gap: 6 }}>
+                      <button onClick={() => openEdit(item)}
+                        style={{ ...cancelBtn, padding: "2px 8px", fontSize: 12 }}>編輯</button>
+                      <button onClick={() => handleDelete(item.id)}
+                        disabled={deletingId === item.id}
+                        style={{ ...cancelBtn, padding: "2px 8px", fontSize: 12, color: "#f85149", borderColor: "#f85149" }}>
+                        {deletingId === item.id ? "..." : "刪除"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
+
+        {/* 新增/編輯 表單區 */}
+        {showForm && (
+          <div style={{ borderTop: "1px solid #30363d", padding: "14px 20px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#cdd9e5", marginBottom: 2 }}>
+              {editingId !== null ? "編輯時段" : "新增時段"}
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+              <div style={{ flex: "0 0 90px" }}>
+                <div style={labelStyle}>設備</div>
+                <select value={form.device_id} onChange={(e) => setForm((f) => ({ ...f, device_id: e.target.value }))}
+                  style={inputStyle}>
+                  {DEVICE_IDS.map((id) => <option key={id} value={id}>{id}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={labelStyle}>開始時間</div>
+                <input type="datetime-local" value={form.start_time}
+                  onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value }))}
+                  style={inputStyle} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={labelStyle}>結束時間</div>
+                <input type="datetime-local" value={form.end_time}
+                  onChange={(e) => setForm((f) => ({ ...f, end_time: e.target.value }))}
+                  style={inputStyle} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={labelStyle}>原因</div>
+                <input value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
+                  placeholder="e.g. 年度校正" style={inputStyle} />
+              </div>
+            </div>
+            {error && <div style={{ color: "#f85149", fontSize: 12 }}>{error}</div>}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button onClick={cancelForm} style={cancelBtn}>取消</button>
+              <button onClick={submit} disabled={saving} style={primaryBtn}>
+                {saving ? "儲存中..." : editingId !== null ? "儲存變更" : "新增"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1043,7 +1165,11 @@ export default function SchedulePage({ active, role, userId, initConditions, onI
 
   // AI 面板「申請此測試」觸發：切到排程 tab 並帶入預填條件
   useEffect(() => {
-    if (initConditions && initConditions !== lastInitCondsRef.current && standardsTree) {
+    if (!initConditions) {
+      lastInitCondsRef.current = null;
+      return;
+    }
+    if (initConditions !== lastInitCondsRef.current && standardsTree) {
       lastInitCondsRef.current = initConditions;
       setPendingInitConds(initConditions);
       setShowNewModal(true);
@@ -1351,11 +1477,11 @@ export default function SchedulePage({ active, role, userId, initConditions, onI
       )}
 
       {showBlockModal && (
-        <BlockDeviceModal
+        <ManageBlockedPeriodsModal
           onClose={() => setShowBlockModal(false)}
-          onCreated={(b) => {
-            setBlockedPeriods((prev) => [...prev, b]);
-            setShowBlockModal(false);
+          onChanged={async () => {
+            const res = await api.get("/api/schedules/gantt");
+            setBlockedPeriods(res.data.blocked_periods ?? []);
           }}
         />
       )}
