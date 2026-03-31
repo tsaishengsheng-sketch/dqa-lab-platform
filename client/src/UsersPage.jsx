@@ -29,7 +29,6 @@ function UserModal({ user, onClose, onSaved }) {
   const { showToast } = useToast();
   const [displayName, setDisplayName] = useState(user?.display_name || "");
   const [role, setRole] = useState(user?.role || "engineer");
-  const [lineUserId, setLineUserId] = useState(user?.line_user_id || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -45,14 +44,12 @@ function UserModal({ user, onClose, onSaved }) {
         await api.patch(`/api/auth/users/${user.id}`, {
           display_name: displayName.trim(),
           role,
-          line_user_id: lineUserId.trim() || null,
         });
         showToast("員工資料已更新", "success");
       } else {
         await api.post("/api/auth/users", {
           display_name: displayName.trim(),
           role,
-          line_user_id: lineUserId.trim() || null,
         });
         showToast("員工已新增", "success");
       }
@@ -131,18 +128,6 @@ function UserModal({ user, onClose, onSaved }) {
             <option value="keeper">保管人</option>
             <option value="admin">管理者</option>
           </select>
-        </div>
-
-        <div>
-          <div style={{ fontSize: 11, color: "#8b949e", marginBottom: 4 }}>
-            LINE User ID（選填，用於推播通知）
-          </div>
-          <input
-            value={lineUserId}
-            onChange={(e) => setLineUserId(e.target.value)}
-            placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            style={inputStyle}
-          />
         </div>
 
         {error && (
